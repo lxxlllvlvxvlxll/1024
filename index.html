@@ -107,17 +107,26 @@ function buildMatches(participants){
 function allResolved(matches){ return matches.every(m => m.winner !== null); }
 
 /* ---------- Firestore ドキュメントの形 ---------- */
-/*
-tournaments/main = {
-  round: number,
-  matchIndex: number,
-  matches: [ {id,left,right,winner,leftCount,rightCount} ],
-  nextCandidates: string[],
-  champion: string|null,
-  optionsHash: string,
-  threshold: number,
-  updatedAt: serverTimestamp()
-}
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyCRHvaE9WMODFhDau9sgqs11lzkW6wrFbc",
+    authDomain: "project-617841149941118768.firebaseapp.com",
+    projectId: "project-617841149941118768",
+    storageBucket: "project-617841149941118768.firebasestorage.app",
+    messagingSenderId: "699664731293",
+    appId: "1:699664731293:web:0ab38c64fb6fc023049874"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+</script>
+
 */
 
 /* ---------- 初期化（誰かが最初に1回やればOK） ---------- */
