@@ -12,12 +12,23 @@
   h1 { font-size: 20px; margin: 0 0 6px; }
   .muted { color: var(--muted); }
   .card { border:1px solid var(--bd); border-radius:16px; padding:16px; margin:12px 0; }
-  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
-  button.choice { width:100%; border:1px solid var(--bd); border-radius:14px; padding:18px; font-size:18px; background:#fff; cursor:pointer; }
-  button.choice:hover { border-color:#cbd5e1; box-shadow:0 2px 10px rgba(0,0,0,.04); }
-  .badge { display:inline-block; border:1px solid var(--bd); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--muted); }
   .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .votes { font-variant-numeric: tabular-nums; }
+
+  /* ====== ここから UI 調整（文章クリックで投票） ====== */
+  .question { font-size: clamp(18px, 2.4vw, 24px); line-height: 1.7; margin: 10px 0 4px; }
+  .name-btn {
+    appearance: none; border: none; background: transparent; padding: 0 6px; margin: 0 2px;
+    font: inherit; cursor: pointer; border-radius: 10px;
+  }
+  .name-btn strong { font-weight: 700; }
+  .name-btn:hover { background: #f8fafc; outline: 1px solid var(--bd); box-shadow: 0 1px 8px rgba(0,0,0,.03); }
+  .votes { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
+  .counts { display:flex; gap:10px; margin-top: 4px; }
+  .count-chip { border:1px solid var(--bd); border-radius:999px; padding:2px 10px; }
+  .badge { display:inline-block; border:1px solid var(--bd); border-radius:999px; padding:3px 10px; font-size:12px; color: var(--muted); }
+  #btn-reset { border:1px solid var(--bd); border-radius:10px; padding:6px 10px; background:#fff; cursor:pointer; }
+  #btn-reset:hover { border-color:#cbd5e1; box-shadow:0 1px 6px rgba(0,0,0,.04); }
+  /* ====== ここまで UI 調整 ====== */
 </style>
 </head>
 <body>
@@ -34,17 +45,23 @@
       <div class="badge" id="badge-round">Round -</div>
       <div class="muted">試合: <span id="badge-match">-</span></div>
     </div>
-    <h2 style="margin-top:8px">どちらに投票しますか？</h2>
 
-    <div class="grid2" style="margin-top:8px">
-      <button class="choice" id="btn-left">
+    <!-- ★ 表示文：〇〇と〇〇、どちらが好きですか？（〇〇をクリックで投票） -->
+    <p class="question" aria-live="polite">
+      <button class="name-btn" id="btn-left" title="左に投票">
         <strong id="label-left">左</strong>
-        <div class="muted votes">票数: <span id="count-left">0</span></div>
       </button>
-      <button class="choice" id="btn-right">
+      と
+      <button class="name-btn" id="btn-right" title="右に投票">
         <strong id="label-right">右</strong>
-        <div class="muted votes">票数: <span id="count-right">0</span></div>
       </button>
+      、どちらが好きですか？
+    </p>
+
+    <!-- 票数の表示（クリックは上の名前部分のみ） -->
+    <div class="counts">
+      <div class="votes count-chip">左の票数: <span id="count-left">0</span></div>
+      <div class="votes count-chip">右の票数: <span id="count-right">0</span></div>
     </div>
 
     <div class="row" style="margin-top:10px; justify-content:space-between;">
@@ -82,8 +99,9 @@ const OPTIONS = [
 ];
 
 /* ===== 調整パラメータ（必要ならここだけ編集） ===== */
+/* ★ 修正点1：先取1票にする */
 const TOURNAMENT_DOC_ID = "main";   // Firestore ドキュメントID
-const VOTE_THRESHOLD    = 25;       // 先取票数
+const VOTE_THRESHOLD    = 1;        // ← 1票入ったら即勝利
 
 /* ===== ユーティリティ（乱択/組合せ/BYE） ===== */
 function shuffle(arr){
@@ -188,6 +206,7 @@ async function vote(side){ // 'left'|'right'
 
 /* ===== UI ===== */
 const $ = (id)=>document.getElementById(id);
+/* ★ クリックターゲットは名前部分（btn-left / btn-right） */
 $("btn-left").addEventListener("click", () => vote('left'));
 $("btn-right").addEventListener("click", () => vote('right'));
 $("btn-reset").addEventListener("click", async ()=>{
