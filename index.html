@@ -3,68 +3,44 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>透明トーナメント（誰でも投票OK）</title>
+<title></title>
 <style>
-  :root { --w: 900px; --fg:#111; --muted:#6b7280; --bd:#e5e7eb; }
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; color:var(--fg); }
-  header { border-bottom:1px solid var(--bd); }
-  .wrap { max-width: var(--w); margin: 0 auto; padding: 16px; }
-  h1 { font-size: 20px; margin: 0 0 6px; }
-  .muted { color: var(--muted); }
-  .card { border:1px solid var(--bd); border-radius:16px; padding:16px; margin:12px 0; }
-  .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-
-  /* 文章クリックで投票 */
-  .question { font-size: clamp(18px, 2.4vw, 24px); line-height: 1.7; margin: 10px 0 4px; }
-  .name-btn { appearance:none; border:none; background:transparent; padding:0 6px; margin:0 2px; font:inherit; cursor:pointer; border-radius:10px; }
-  .name-btn strong { font-weight:700; }
-  .name-btn:hover { background:#f8fafc; outline:1px solid var(--bd); box-shadow:0 1px 8px rgba(0,0,0,.03); }
-  .votes { font-variant-numeric: tabular-nums; font-size:13px; color:var(--muted); }
-  .counts { display:flex; gap:10px; margin-top:4px; }
-  .count-chip { border:1px solid var(--bd); border-radius:999px; padding:2px 10px; }
-  .badge { display:inline-block; border:1px solid var(--bd); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--muted); }
-  #btn-reset { border:1px solid var(--bd); border-radius:10px; padding:6px 10px; background:#fff; cursor:pointer; }
-  #btn-reset:hover { border-color:#cbd5e1; box-shadow:0 1px 6px rgba(0,0,0,.04); }
+  /* 画面には質問文以外のUIを出さない。候補名はテキスト風ボタンにしてクリック投票。 */
+  html, body { margin:0; padding:0; background:#fff; color:#111; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .qwrap { max-width: 900px; margin: 20px auto; padding: 0 12px; }
+  .question { font-size: clamp(18px, 2.4vw, 24px); line-height: 1.8; margin: 0; }
+  .name-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 0 4px;
+    margin: 0 2px;
+    font: inherit;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+  .name-btn strong { font-weight: 700; }
+  .name-btn:hover { background: #f8fafc; outline: 1px solid #e5e7eb; }
+  .name-btn:disabled { cursor: not-allowed; opacity: .5; outline: none; }
 </style>
 </head>
 <body>
-<header>
-  <div class="wrap">
-    <h1>透明トーナメント</h1>
-    <div class="muted">2択のみ／設定不可／各ラウンドはランダム組合せ／BYE自動／リアルタイム同期</div>
-  </div>
-</header>
-
-<main class="wrap">
-  <section class="card">
-    <div class="row" style="justify-content:space-between;">
-      <div class="badge" id="badge-round">Round -</div>
-      <div class="muted">試合: <span id="badge-match">-</span></div>
-    </div>
-
-    <!-- 文章形式：「〇〇と〇〇、どちらが好きですか？」（〇〇クリックで投票） -->
+  <!-- 画面に見えるのはこの一文だけ -->
+  <div class="qwrap">
     <p class="question" aria-live="polite">
-      <button class="name-btn" id="btn-left" title="左に投票"><strong id="label-left">左</strong></button>
+      <button class="name-btn" id="btn-left" title="左に投票">
+        <strong id="label-left">—</strong>
+      </button>
       と
-      <button class="name-btn" id="btn-right" title="右に投票"><strong id="label-right">右</strong></button>
+      <button class="name-btn" id="btn-right" title="右に投票">
+        <strong id="label-right">—</strong>
+      </button>
       、どちらが好きですか？
     </p>
-
-    <div class="counts">
-      <div class="votes count-chip">左の票数: <span id="count-left">0</span></div>
-      <div class="votes count-chip">右の票数: <span id="count-right">0</span></div>
-    </div>
-
-    <div class="row" style="margin-top:10px; justify-content:space-between;">
-      <div class="muted" id="info-line"></div>
-      <button id="btn-reset" title="最初からやり直す">リセット</button>
-    </div>
-    <p id="status" class="muted" style="margin:8px 0 0;"></p>
-  </section>
-</main>
+  </div>
 
 <script type="module">
-/* ===== Firebase v12.4.0（あなたの設定を使用：変更禁止） ===== */
+/* ===== Firebase v12.4.0（変更不可） ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc,
@@ -85,12 +61,13 @@ const db  = getFirestore(app);
 /* ===== 固定候補（サイトから変更不可） ===== */
 const OPTIONS = [
   "🍎 Apple","🍊 Orange","🍇 Grape","🍑 Peach",
-  "🍉 Watermelon","🍌 Banana","🍍 Pineapple","🍓 Strawberry"
+  "🍉 Watermelon","🍌 Banana","🍍 Pineapple","🍓 Strawberry",
+  "🥭 Mango","🍈 Melon","🥝 Kiwi"
 ];
 
 /* ===== 調整パラメータ（1票先取） ===== */
-const TOURNAMENT_DOC_ID = "main";   // Firestore ドキュメントID
-const VOTE_THRESHOLD    = 1;        // 1票入ったら即勝利
+const TOURNAMENT_DOC_ID = "main";
+const VOTE_THRESHOLD    = 1;
 
 /* ===== ユーティリティ ===== */
 function shuffle(arr){
@@ -135,12 +112,10 @@ async function initTournamentIfNeeded(){
 async function startNextRound(docData){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const winners = (docData.nextCandidates ?? []).slice();
-
-  // 安全策：勝者がいない場合は何もしない
-  if (winners.length === 0) return;
+  if (winners.length === 0) return; // 安全策
 
   if (winners.length === 1){
-    // 既存仕様どおり champion を保存（UI 側で即リセットする）
+    // 決着 → UI では表示せず即再初期化させる（onSnapshot 側で対応）
     await updateDoc(ref, { champion: winners[0], updatedAt: serverTimestamp() });
     return;
   }
@@ -160,7 +135,7 @@ async function startNextRound(docData){
 }
 
 /* ===== 投票 ===== */
-async function vote(side){ // 'left'|'right'
+async function vote(side){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
@@ -188,7 +163,7 @@ async function vote(side){ // 'left'|'right'
 
       tx.update(ref, { matches, nextCandidates: next, matchIndex, updatedAt: serverTimestamp() });
 
-      // 念のための即時ラウンド遷移チェック（既存の仕組みを活かす）
+      // 既存の即時チェック（残す）
       setTimeout(async () => {
         const after = (await getDoc(ref)).data();
         if (after && allResolved(after.matches)) await startNextRound(after);
@@ -199,11 +174,13 @@ async function vote(side){ // 'left'|'right'
   });
 }
 
-/* ===== UI ===== */
+/* ===== UI（質問文だけ） ===== */
 const $ = (id)=>document.getElementById(id);
+$("btn-left").addEventListener("click", () => vote('left'));
+$("btn-right").addEventListener("click", () => vote('right'));
 
-/* リセット共通関数（ボタン／自動用） */
-async function resetTournament(){
+/* ===== 内部再初期化（優勝時に自動で一回戦へ） ===== */
+async function reinitTournament(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const matches = buildMatches(OPTIONS);
   const nextCandidates = [];
@@ -219,75 +196,48 @@ async function resetTournament(){
   });
 }
 
-/* クリック：候補名が投票ボタン */
-$("btn-left").addEventListener("click", () => vote('left'));
-$("btn-right").addEventListener("click", () => vote('right'));
-$("btn-reset").addEventListener("click", async ()=>{
-  if (!confirm("トーナメントを最初からやり直します。よろしいですか？")) return;
-  await resetTournament();
-});
-
-/* ===== 表示のリアルタイム更新 ===== */
-let resetting = false;      // 優勝→即リセットの二重防止
+/* ===== 状態監視（画面に文字は出さない） ===== */
+let resetting = false;      // 優勝→自動再初期化の二重防止
 let advancingRound = false; // ラウンド即時遷移の二重防止
 
 onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
-  if (!d){ $("status").textContent = "初期化中…"; return; }
+  if (!d) return;
 
-  /* 優勝が決まったら表示せず即リセット */
+  // 優勝が決まったら画面に「優勝」等は一切出さず即再初期化
   if (d.champion && !resetting){
     resetting = true;
-    $("status").textContent = "リセット中…";
-    resetTournament().finally(()=>{ resetting = false; });
-    return; // champion 画面は出さない
-  }
-
-  /* ラウンドが全試合終了したらすぐ次ラウンドへ（UI側でもトリガー） */
-  if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
-    advancingRound = true;
-    startNextRound(d).finally(()=>{ advancingRound = false; });
-    return; // 次のスナップショットで画面更新
-  }
-
-  $("badge-round").textContent = `Round ${d.round ?? 1}`;
-
-  const idx = d.matchIndex ?? 0;
-  const match = d.matches?.[idx];
-  $("info-line").textContent = `固定候補 ${OPTIONS.length} 件（先取 ${d.threshold} 票）`;
-
-  /* ここが“狭間の瞬間”。プレースホルダー表示＋フォールバックで確実に進める */
-  if (!match){
-    $("badge-match").textContent = "-";
-    $("label-left").textContent = "…";
-    $("label-right").textContent = "…";
-    $("count-left").textContent = "0";
-    $("count-right").textContent = "0";
-    $("btn-left").disabled = $("btn-right").disabled = true;
-    $("status").textContent = "次ラウンドへ進行中…";
-
-    // フォールバック：全試合解決 or インデックスが末尾超え → 即ラウンド生成
-    if (!d.champion
-        && Array.isArray(d.matches)
-        && (allResolved(d.matches) || idx >= d.matches.length)
-        && !advancingRound) {
-      advancingRound = true;
-      startNextRound(d).finally(()=>{ advancingRound = false; });
-    }
+    reinitTournament().finally(()=>{ resetting = false; });
     return;
   }
 
-  $("badge-match").textContent = String(match.id);
-  $("label-left").textContent = match.left ?? "TBD";
-  $("label-right").textContent = match.right ?? "TBD";
-  $("count-left").textContent = match.leftCount ?? 0;
-  $("count-right").textContent = match.rightCount ?? 0;
+  // ラウンドが全試合終了したらすぐ次ラウンドを生成
+  if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
+    advancingRound = true;
+    startNextRound(d).finally(()=>{ advancingRound = false; });
+    return;
+  }
+
+  const idx = d.matchIndex ?? 0;
+  const match = d.matches?.[idx];
+
+  // ラウンドの狭間（!match）で取りこぼしフォールバック
+  if (!match){
+    if (!d.champion && Array.isArray(d.matches) && (allResolved(d.matches) || idx >= d.matches.length) && !advancingRound){
+      advancingRound = true;
+      startNextRound(d).finally(()=>{ advancingRound = false; });
+    }
+    // 何も表示しないので return
+    return;
+  }
+
+  // 表示するのは候補名のみ（質問文内）
+  $("label-left").textContent  = match.left  ?? "—";
+  $("label-right").textContent = match.right ?? "—";
 
   const playable = !!(match.left && match.right && !match.winner);
-  $("btn-left").disabled = $("btn-right").disabled = !playable;
-  $("status").textContent = playable
-    ? `この試合は先取 ${d.threshold} 票で決着します。`
-    : `前の試合が片付くと自動で進みます（BYEは自動処理）。`;
+  $("btn-left").disabled  = !playable;
+  $("btn-right").disabled = !playable;
 });
 
 /* ===== 起動：初期化 ===== */
