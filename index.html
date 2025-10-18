@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>透明トーナメント（誰でもすぐ投票・リアルタイム）</title>
+<style>
+  :root { --w: 900px; --fg:#111; --muted:#6b7280; --bd:#e5e7eb; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; color:var(--fg); }
+  header { border-bottom:1px solid var(--bd); }
+  .wrap { max-width: var(--w); margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .muted { color: var(--muted); }
+  .card { border:1px solid var(--bd); border-radius:16px; padding:16px; margin:12px 0; }
+  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  button.choice { width:100%; border:1px solid var(--bd); border-radius:14px; padding:18px; font-size:18px; background:#fff; cursor:pointer; }
+  button.choice:hover { border-color:#cbd5e1; box-shadow:0 2px 10px rgba(0,0,0,.04); }
+  .badge { display:inline-block; border:1px solid var(--bd); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--muted); }
+  .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .votes { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>透明トーナメント</h1>
+    <div class="muted">2択だけ・設定不可・各ラウンド ランダム組合せ・BYE自動・リアルタイム同期</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <div class="row" style="justify-content:space-between;">
+      <div class="badge" id="badge-round">Round -</div>
+      <div class="muted">試合: <span id="badge-match">-</span></div>
+    </div>
+    <h2 style="margin-top:8px">どちらに投票しますか？</h2>
+
+    <div class="grid2" style="margin-top:8px">
+      <button class="choice" id="btn-left">
+        <strong id="label-left">左</strong>
+        <div class="muted votes">票数: <span id="count-left">0</span></div>
+      </button>
+      <button class="choice" id="btn-right">
+        <strong id="label-right">右</strong>
+        <div class="muted votes">票数: <span id="count-right">0</span></div>
+      </button>
+    </div>
+
+    <div class="row" style="margin-top:10px; justify-content:space-between;">
+      <div class="muted" id="info-line"></div>
+      <button id="btn-reset" title="最初からやり直す">リセット</button>
+    </div>
+    <p id="status" class="muted" style="margin:8px 0 0;"></p>
+  </section>
+</main>
+
+<!-- Firebase CDN（v10 modular） -->
+<script type="module">
+/* ========= ここだけ置き換え ========= */
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+/* =================================== */
+
+/* ======== 固定の選択肢（サイトから変更不可） ======== */
+const OPTIONS = [
+  "🍎 Apple","🍊 Orange","🍇 Grape","🍑 Peach",
+  "🍉 Watermelon","🍌 Banana","🍍 Pineapple","🍓 Strawberry",
+  "🥭 Mango","🍈 Melon","🥝 Kiwi"
+];
+
+/* ======== 設定（コード内のみ変更） ======== */
+const TOURNAMENT_DOC_ID = "main";     // Firestore ドキュメントID
+const VOTE_THRESHOLD = 25;            // 先取票数（例：25票）
+
+/* ======== 以降は触らなくてOK ======== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ---------- 乱択・BYE・組合せ ---------- */
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i=a.length-1; i>0; i--){
+    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i+1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function buildMatches(participants){
+  const p = shuffle(participants);
+  const m = [];
+  let id = 1;
+  for (let i=0; i<p.length; i+=2){
+    m.push({ id:id++, left:p[i] ?? null, right:p[i+1] ?? null, winner:null, leftCount:0, rightCount:0 });
+  }
+  return m;
+}
+function allResolved(matches){ return matches.every(m => m.winner !== null); }
+
+/* ---------- Firestore ドキュメントの形 ---------- */
+/*
+tournaments/main = {
+  round: number,
+  matchIndex: number,
+  matches: [ {id,left,right,winner,leftCount,rightCount} ],
+  nextCandidates: string[],
+  champion: string|null,
+  optionsHash: string,
+  threshold: number,
+  updatedAt: serverTimestamp()
+}
+*/
+
+/* ---------- 初期化（誰かが最初に1回やればOK） ---------- */
+async function initTournamentIfNeeded() {
+  const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+  const snap = await getDoc(ref);
+  if (snap.exists()) return;
+
+  const matches = buildMatches(OPTIONS);
+  const nextCandidates = [];
+  for (const m of matches){
+    if (m.left && !m.right) { m.winner = m.left; nextCandidates.push(m.left); }
+    else if (!m.left && m.right) { m.winner = m.right; nextCandidates.push(m.right); }
+  }
+  await setDoc(ref, {
+    round: 1, matchIndex: 0, matches, nextCandidates,
+    champion: null,
+    optionsHash: await sha256(JSON.stringify(OPTIONS)),
+    threshold: VOTE_THRESHOLD,
+    updatedAt: serverTimestamp()
+  });
+}
+
+/* ---------- ラウンド終了→次ラウンド開始 ---------- */
+async function startNextRound(currDoc) {
+  const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+  const winners = currDoc.nextCandidates.slice();
+  if (winners.length === 1){
+    await updateDoc(ref, { champion: winners[0], updatedAt: serverTimestamp() });
+    return;
+  }
+  const matches = buildMatches(winners);
+  const nextCandidates = [];
+  for (const m of matches){
+    if (m.left && !m.right) { m.winner = m.left; nextCandidates.push(m.left); }
+    else if (!m.left && m.right) { m.winner = m.right; nextCandidates.push(m.right); }
+  }
+  await updateDoc(ref, {
+    round: (currDoc.round ?? 1) + 1,
+    matchIndex: 0,
+    matches,
+    nextCandidates,
+    updatedAt: serverTimestamp()
+  });
+}
+
+/* ---------- 投票（ログイン不要／公開書き込み想定） ---------- */
+async function vote(side /* 'left'|'right' */){
+  const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw "not-found";
+    const data = snap.data();
+    if (data.champion) return;
+
+    const idx = data.matchIndex ?? 0;
+    const matches = data.matches ?? [];
+    const m = matches[idx];
+    if (!m || m.winner) return;
+    if (!m.left || !m.right) return;
+
+    if (side === 'left') m.leftCount = (m.leftCount ?? 0) + 1;
+    else m.rightCount = (m.rightCount ?? 0) + 1;
+
+    const threshold = data.threshold ?? VOTE_THRESHOLD;
+    if ((m.leftCount ?? 0) >= threshold || (m.rightCount ?? 0) >= threshold){
+      m.winner = (m.leftCount >= m.rightCount) ? m.left : m.right;
+      const next = (data.nextCandidates ?? []).slice();
+      next.push(m.winner);
+
+      let matchIndex = (data.matchIndex ?? 0) + 1;
+      while (matchIndex < matches.length && matches[matchIndex].winner) matchIndex++;
+
+      tx.update(ref, { matches, nextCandidates: next, matchIndex, updatedAt: serverTimestamp() });
+
+      // 全試合確定なら次ラウンドへ
+      setTimeout(async () => {
+        const after = (await getDoc(ref)).data();
+        if (after && allResolved(after.matches)) await startNextRound(after);
+      }, 0);
+    } else {
+      tx.update(ref, { matches, updatedAt: serverTimestamp() });
+    }
+  });
+}
+
+/* ---------- UIバインド ---------- */
+const $ = (id)=>document.getElementById(id);
+$("btn-left").addEventListener("click", () => vote('left'));
+$("btn-right").addEventListener("click", () => vote('right'));
+$("btn-reset").addEventListener("click", async ()=>{
+  if (!confirm("トーナメントを最初からやり直します。よろしいですか？")) return;
+  const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+  const matches = buildMatches(OPTIONS);
+  const nextCandidates = [];
+  for (const m of matches){
+    if (m.left && !m.right) { m.winner = m.left; nextCandidates.push(m.left); }
+    else if (!m.left && m.right) { m.winner = m.right; nextCandidates.push(m.right); }
+  }
+  await setDoc(ref, {
+    round: 1, matchIndex: 0, matches, nextCandidates,
+    champion: null,
+    optionsHash: await sha256(JSON.stringify(OPTIONS)),
+    threshold: VOTE_THRESHOLD,
+    updatedAt: serverTimestamp()
+  });
+});
+
+/* ---------- 表示をリアルタイム更新 ---------- */
+onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
+  const d = snap.data();
+  if (!d){ $("status").textContent = "初期化中…"; return; }
+  $("badge-round").textContent = d.champion ? "決着" : `Round ${d.round ?? 1}`;
+
+  if (d.champion){
+    $("badge-match").textContent = "-";
+    $("label-left").textContent = `🎉 優勝：${d.champion}`;
+    $("label-right").textContent = "リセットで再開";
+    $("count-left").textContent = "—";
+    $("count-right").textContent = "—";
+    $("btn-left").disabled = true;
+    $("btn-right").disabled = true;
+    $("status").textContent = "トーナメント終了。";
+    $("info-line").textContent = `固定候補 ${OPTIONS.length} 件（しきい値 ${d.threshold} 票）`;
+    return;
+  }
+
+  const idx = d.matchIndex ?? 0;
+  let match = d.matches?.[idx];
+  $("info-line").textContent = `固定候補 ${OPTIONS.length} 件（しきい値 ${d.threshold} 票）`;
+
+  if (!match){
+    $("badge-match").textContent = "-";
+    $("label-left").textContent = "…";
+    $("label-right").textContent = "…";
+    $("count-left").textContent = "0";
+    $("count-right").textContent = "0";
+    $("btn-left").disabled = $("btn-right").disabled = true;
+    $("status").textContent = "次ラウンドへ進行中…";
+    return;
+  }
+
+  $("badge-match").textContent = String(match.id);
+  $("label-left").textContent = match.left ?? "TBD";
+  $("label-right").textContent = match.right ?? "TBD";
+  $("count-left").textContent = match.leftCount ?? 0;
+  $("count-right").textContent = match.rightCount ?? 0;
+
+  const playable = !!(match.left && match.right && !match.winner);
+  $("btn-left").disabled = $("btn-right").disabled = !playable;
+  $("status").textContent = playable
+    ? `この試合は先取 ${d.threshold} 票で決着します。`
+    : `前の試合が片付くと自動で進みます（BYEは自動処理）。`;
+});
+
+/* ---------- 起動：初期化（ログイン不要） ---------- */
+initTournamentIfNeeded();
+
+/* ---------- ユーティリティ：SHA-256 ---------- */
+async function sha256(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+</script>
+</body>
+</html>
