@@ -64,9 +64,12 @@
 </main>
 
 <script type="module">
-/* ===== Firebase v12.4.0（あなたの設定を使用） ===== */
+/* ===== Firebase v12.4.0（あなたの設定を使用：変更禁止） ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc,
+  runTransaction, onSnapshot, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCRHvaE9WMODFhDau9sgqs11lzkW6wrFbc",
@@ -83,17 +86,28 @@ const db  = getFirestore(app);
 const OPTIONS = [
   "🍎 Apple","🍊 Orange","🍇 Grape","🍑 Peach",
   "🍉 Watermelon","🍌 Banana","🍍 Pineapple","🍓 Strawberry"
-  ];
+];
 
 /* ===== 調整パラメータ（1票先取） ===== */
-const TOURNAMENT_DOC_ID = "main";
-const VOTE_THRESHOLD    = 1;
+const TOURNAMENT_DOC_ID = "main";   // Firestore ドキュメントID
+const VOTE_THRESHOLD    = 1;        // 1票入ったら即勝利
 
 /* ===== ユーティリティ ===== */
-function shuffle(arr){ const a = arr.slice(); for (let i=a.length-1; i>0; i--){ const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i+1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i=a.length-1; i>0; i--){
+    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i+1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 function buildMatches(participants){
-  const p = shuffle(participants), m = []; let id = 1;
-  for (let i=0; i<p.length; i+=2){ m.push({ id:id++, left:p[i] ?? null, right:p[i+1] ?? null, winner:null, leftCount:0, rightCount:0 }); }
+  const p = shuffle(participants);
+  const m = [];
+  let id = 1;
+  for (let i=0; i<p.length; i+=2){
+    m.push({ id:id++, left:p[i] ?? null, right:p[i+1] ?? null, winner:null, leftCount:0, rightCount:0 });
+  }
   return m;
 }
 function allResolved(matches){ return matches.every(x => x.winner !== null); }
@@ -109,15 +123,24 @@ async function initTournamentIfNeeded(){
     if (m.left && !m.right){ m.winner = m.left;  nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
-  await setDoc(ref, { round:1, matchIndex:0, matches, nextCandidates, champion:null, threshold:VOTE_THRESHOLD, updatedAt:serverTimestamp() });
+  await setDoc(ref, {
+    round: 1, matchIndex: 0, matches, nextCandidates,
+    champion: null,
+    threshold: VOTE_THRESHOLD,
+    updatedAt: serverTimestamp()
+  });
 }
 
 /* ===== ラウンド遷移 ===== */
 async function startNextRound(docData){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
-  const winners = docData.nextCandidates.slice();
+  const winners = (docData.nextCandidates ?? []).slice();
+
+  // 安全策：勝者がいない場合は何もしない
+  if (winners.length === 0) return;
+
   if (winners.length === 1){
-    // ここは既存仕様どおり champion を保存（UI側で即リセット）
+    // 既存仕様どおり champion を保存（UI 側で即リセットする）
     await updateDoc(ref, { champion: winners[0], updatedAt: serverTimestamp() });
     return;
   }
@@ -127,11 +150,17 @@ async function startNextRound(docData){
     if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
-  await updateDoc(ref, { round:(docData.round ?? 1)+1, matchIndex:0, matches, nextCandidates, updatedAt:serverTimestamp() });
+  await updateDoc(ref, {
+    round: (docData.round ?? 1) + 1,
+    matchIndex: 0,
+    matches,
+    nextCandidates,
+    updatedAt: serverTimestamp()
+  });
 }
 
 /* ===== 投票 ===== */
-async function vote(side){
+async function vote(side){ // 'left'|'right'
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
@@ -159,7 +188,7 @@ async function vote(side){
 
       tx.update(ref, { matches, nextCandidates: next, matchIndex, updatedAt: serverTimestamp() });
 
-      /* 既存の即時チェック（残しつつ） */
+      // 念のための即時ラウンド遷移チェック（既存の仕組みを活かす）
       setTimeout(async () => {
         const after = (await getDoc(ref)).data();
         if (after && allResolved(after.matches)) await startNextRound(after);
@@ -182,9 +211,15 @@ async function resetTournament(){
     if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
-  await setDoc(ref, { round:1, matchIndex:0, matches, nextCandidates, champion:null, threshold:VOTE_THRESHOLD, updatedAt:serverTimestamp() });
+  await setDoc(ref, {
+    round: 1, matchIndex: 0, matches, nextCandidates,
+    champion: null,
+    threshold: VOTE_THRESHOLD,
+    updatedAt: serverTimestamp()
+  });
 }
 
+/* クリック：候補名が投票ボタン */
 $("btn-left").addEventListener("click", () => vote('left'));
 $("btn-right").addEventListener("click", () => vote('right'));
 $("btn-reset").addEventListener("click", async ()=>{
@@ -200,19 +235,19 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d){ $("status").textContent = "初期化中…"; return; }
 
-  /* 優勝が決まったら表示せず自動リセット */
+  /* 優勝が決まったら表示せず即リセット */
   if (d.champion && !resetting){
     resetting = true;
     $("status").textContent = "リセット中…";
     resetTournament().finally(()=>{ resetting = false; });
-    return;
+    return; // champion 画面は出さない
   }
 
-  /* ★ ラウンドが全試合終了したらすぐ次ラウンドへ（即時遷移） */
+  /* ラウンドが全試合終了したらすぐ次ラウンドへ（UI側でもトリガー） */
   if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
     advancingRound = true;
     startNextRound(d).finally(()=>{ advancingRound = false; });
-    return; // 画面は次の onSnapshot で更新
+    return; // 次のスナップショットで画面更新
   }
 
   $("badge-round").textContent = `Round ${d.round ?? 1}`;
@@ -221,6 +256,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const match = d.matches?.[idx];
   $("info-line").textContent = `固定候補 ${OPTIONS.length} 件（先取 ${d.threshold} 票）`;
 
+  /* ここが“狭間の瞬間”。プレースホルダー表示＋フォールバックで確実に進める */
   if (!match){
     $("badge-match").textContent = "-";
     $("label-left").textContent = "…";
@@ -229,6 +265,15 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
     $("count-right").textContent = "0";
     $("btn-left").disabled = $("btn-right").disabled = true;
     $("status").textContent = "次ラウンドへ進行中…";
+
+    // フォールバック：全試合解決 or インデックスが末尾超え → 即ラウンド生成
+    if (!d.champion
+        && Array.isArray(d.matches)
+        && (allResolved(d.matches) || idx >= d.matches.length)
+        && !advancingRound) {
+      advancingRound = true;
+      startNextRound(d).finally(()=>{ advancingRound = false; });
+    }
     return;
   }
 
