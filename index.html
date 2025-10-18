@@ -14,7 +14,7 @@
   .card { border:1px solid var(--bd); border-radius:16px; padding:16px; margin:12px 0; }
   .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
-  /* ====== ここから UI 調整（文章クリックで投票） ====== */
+  /* ====== UI（文章クリックで投票） ====== */
   .question { font-size: clamp(18px, 2.4vw, 24px); line-height: 1.7; margin: 10px 0 4px; }
   .name-btn {
     appearance: none; border: none; background: transparent; padding: 0 6px; margin: 0 2px;
@@ -28,7 +28,6 @@
   .badge { display:inline-block; border:1px solid var(--bd); border-radius:999px; padding:3px 10px; font-size:12px; color: var(--muted); }
   #btn-reset { border:1px solid var(--bd); border-radius:10px; padding:6px 10px; background:#fff; cursor:pointer; }
   #btn-reset:hover { border-color:#cbd5e1; box-shadow:0 1px 6px rgba(0,0,0,.04); }
-  /* ====== ここまで UI 調整 ====== */
 </style>
 </head>
 <body>
@@ -46,7 +45,7 @@
       <div class="muted">試合: <span id="badge-match">-</span></div>
     </div>
 
-    <!-- ★ 表示文：〇〇と〇〇、どちらが好きですか？（〇〇をクリックで投票） -->
+    <!-- ★ 文章形式：「〇〇と〇〇、どちらが好きですか？」（〇〇クリックで投票） -->
     <p class="question" aria-live="polite">
       <button class="name-btn" id="btn-left" title="左に投票">
         <strong id="label-left">左</strong>
@@ -58,7 +57,7 @@
       、どちらが好きですか？
     </p>
 
-    <!-- 票数の表示（クリックは上の名前部分のみ） -->
+    <!-- 票数表示 -->
     <div class="counts">
       <div class="votes count-chip">左の票数: <span id="count-left">0</span></div>
       <div class="votes count-chip">右の票数: <span id="count-right">0</span></div>
@@ -94,16 +93,15 @@ const db  = getFirestore(app);
 /* ===== 固定候補（サイトから変更不可） ===== */
 const OPTIONS = [
   "🍎 Apple","🍊 Orange","🍇 Grape","🍑 Peach",
-  "🍉 Watermelon","🍌 Banana","🍍 Pineapple","🍓 Strawberry",
-  "🥭 Mango","🍈 Melon","🥝 Kiwi"
+  "🍉 Watermelon","🍌 Banana","🍍 Pineapple","🍓 Strawberry"
 ];
 
-/* ===== 調整パラメータ（必要ならここだけ編集） ===== */
-/* ★ 修正点1：先取1票にする */
-const TOURNAMENT_DOC_ID = "main";   // Firestore ドキュメントID
-const VOTE_THRESHOLD    = 1;        // ← 1票入ったら即勝利
+/* ===== 調整パラメータ ===== */
+/* 1票入ったら即勝利（修正点1） */
+const TOURNAMENT_DOC_ID = "main";
+const VOTE_THRESHOLD    = 1;
 
-/* ===== ユーティリティ（乱択/組合せ/BYE） ===== */
+/* ===== ユーティリティ ===== */
 function shuffle(arr){
   const a = arr.slice();
   for (let i=a.length-1; i>0; i--){
@@ -123,7 +121,7 @@ function buildMatches(participants){
 }
 function allResolved(matches){ return matches.every(x => x.winner !== null); }
 
-/* ===== 初期化（誰か1人が1回呼べばOK） ===== */
+/* ===== 初期化 ===== */
 async function initTournamentIfNeeded(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const snap = await getDoc(ref);
@@ -147,6 +145,7 @@ async function startNextRound(docData){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const winners = docData.nextCandidates.slice();
   if (winners.length === 1){
+    // champion を保存（既存ロジックのまま）→ onSnapshot 側で即リセット
     await updateDoc(ref, { champion: winners[0], updatedAt: serverTimestamp() });
     return;
   }
@@ -165,8 +164,8 @@ async function startNextRound(docData){
   });
 }
 
-/* ===== 投票（公開書き込み前提） ===== */
-async function vote(side){ // 'left'|'right'
+/* ===== 投票 ===== */
+async function vote(side){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
@@ -206,16 +205,14 @@ async function vote(side){ // 'left'|'right'
 
 /* ===== UI ===== */
 const $ = (id)=>document.getElementById(id);
-/* ★ クリックターゲットは名前部分（btn-left / btn-right） */
-$("btn-left").addEventListener("click", () => vote('left'));
-$("btn-right").addEventListener("click", () => vote('right'));
-$("btn-reset").addEventListener("click", async ()=>{
-  if (!confirm("トーナメントを最初からやり直します。よろしいですか？")) return;
+
+/* リセット共通関数（ボタン／自動用） */
+async function resetTournament(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const matches = buildMatches(OPTIONS);
   const nextCandidates = [];
   for (const m of matches){
-    if (m.left && !m.right){ m.winner = m.left;  nextCandidates.push(m.left); }
+    if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
   await setDoc(ref, {
@@ -224,26 +221,33 @@ $("btn-reset").addEventListener("click", async ()=>{
     threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp()
   });
+}
+
+$("btn-left").addEventListener("click", () => vote('left'));
+$("btn-right").addEventListener("click", () => vote('right'));
+$("btn-reset").addEventListener("click", async ()=>{
+  if (!confirm("トーナメントを最初からやり直します。よろしいですか？")) return;
+  await resetTournament();
 });
 
 /* ===== 表示のリアルタイム更新 ===== */
+/* 二重リセット防止用フラグ */
+let resetting = false;
+
 onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d){ $("status").textContent = "初期化中…"; return; }
-  $("badge-round").textContent = d.champion ? "決着" : `Round ${d.round ?? 1}`;
 
-  if (d.champion){
-    $("badge-match").textContent = "-";
-    $("label-left").textContent = `🎉 優勝：${d.champion}`;
-    $("label-right").textContent = "リセットで再開";
-    $("count-left").textContent = "—";
-    $("count-right").textContent = "—";
-    $("btn-left").disabled = true;
-    $("btn-right").disabled = true;
-    $("status").textContent = "トーナメント終了。";
-    $("info-line").textContent = `固定候補 ${OPTIONS.length} 件（先取 ${d.threshold} 票）`;
-    return;
+  /* ★ 修正点3：優勝が決まったら即リセット（表示しない） */
+  if (d.champion && !resetting){
+    resetting = true;
+    $("status").textContent = "リセット中…";
+    // 非同期で即リセット（終われば次の onSnapshot が走る）
+    resetTournament().finally(()=>{ resetting = false; });
+    return; // champion 画面は出さない
   }
+
+  $("badge-round").textContent = `Round ${d.round ?? 1}`;
 
   const idx = d.matchIndex ?? 0;
   let match = d.matches?.[idx];
