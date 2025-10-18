@@ -14,18 +14,15 @@
   .card { border:1px solid var(--bd); border-radius:16px; padding:16px; margin:12px 0; }
   .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
-  /* ====== UI（文章クリックで投票） ====== */
+  /* 文章クリックで投票 */
   .question { font-size: clamp(18px, 2.4vw, 24px); line-height: 1.7; margin: 10px 0 4px; }
-  .name-btn {
-    appearance: none; border: none; background: transparent; padding: 0 6px; margin: 0 2px;
-    font: inherit; cursor: pointer; border-radius: 10px;
-  }
-  .name-btn strong { font-weight: 700; }
-  .name-btn:hover { background: #f8fafc; outline: 1px solid var(--bd); box-shadow: 0 1px 8px rgba(0,0,0,.03); }
-  .votes { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
-  .counts { display:flex; gap:10px; margin-top: 4px; }
+  .name-btn { appearance:none; border:none; background:transparent; padding:0 6px; margin:0 2px; font:inherit; cursor:pointer; border-radius:10px; }
+  .name-btn strong { font-weight:700; }
+  .name-btn:hover { background:#f8fafc; outline:1px solid var(--bd); box-shadow:0 1px 8px rgba(0,0,0,.03); }
+  .votes { font-variant-numeric: tabular-nums; font-size:13px; color:var(--muted); }
+  .counts { display:flex; gap:10px; margin-top:4px; }
   .count-chip { border:1px solid var(--bd); border-radius:999px; padding:2px 10px; }
-  .badge { display:inline-block; border:1px solid var(--bd); border-radius:999px; padding:3px 10px; font-size:12px; color: var(--muted); }
+  .badge { display:inline-block; border:1px solid var(--bd); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--muted); }
   #btn-reset { border:1px solid var(--bd); border-radius:10px; padding:6px 10px; background:#fff; cursor:pointer; }
   #btn-reset:hover { border-color:#cbd5e1; box-shadow:0 1px 6px rgba(0,0,0,.04); }
 </style>
@@ -45,19 +42,14 @@
       <div class="muted">試合: <span id="badge-match">-</span></div>
     </div>
 
-    <!-- ★ 文章形式：「〇〇と〇〇、どちらが好きですか？」（〇〇クリックで投票） -->
+    <!-- 文章形式：「〇〇と〇〇、どちらが好きですか？」（〇〇クリックで投票） -->
     <p class="question" aria-live="polite">
-      <button class="name-btn" id="btn-left" title="左に投票">
-        <strong id="label-left">左</strong>
-      </button>
+      <button class="name-btn" id="btn-left" title="左に投票"><strong id="label-left">左</strong></button>
       と
-      <button class="name-btn" id="btn-right" title="右に投票">
-        <strong id="label-right">右</strong>
-      </button>
+      <button class="name-btn" id="btn-right" title="右に投票"><strong id="label-right">右</strong></button>
       、どちらが好きですか？
     </p>
 
-    <!-- 票数表示 -->
     <div class="counts">
       <div class="votes count-chip">左の票数: <span id="count-left">0</span></div>
       <div class="votes count-chip">右の票数: <span id="count-right">0</span></div>
@@ -74,10 +66,7 @@
 <script type="module">
 /* ===== Firebase v12.4.0（あなたの設定を使用） ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc,
-  runTransaction, onSnapshot, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCRHvaE9WMODFhDau9sgqs11lzkW6wrFbc",
@@ -94,29 +83,17 @@ const db  = getFirestore(app);
 const OPTIONS = [
   "🍎 Apple","🍊 Orange","🍇 Grape","🍑 Peach",
   "🍉 Watermelon","🍌 Banana","🍍 Pineapple","🍓 Strawberry"
-];
+  ];
 
-/* ===== 調整パラメータ ===== */
-/* 1票入ったら即勝利（修正点1） */
+/* ===== 調整パラメータ（1票先取） ===== */
 const TOURNAMENT_DOC_ID = "main";
 const VOTE_THRESHOLD    = 1;
 
 /* ===== ユーティリティ ===== */
-function shuffle(arr){
-  const a = arr.slice();
-  for (let i=a.length-1; i>0; i--){
-    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i+1);
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+function shuffle(arr){ const a = arr.slice(); for (let i=a.length-1; i>0; i--){ const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i+1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function buildMatches(participants){
-  const p = shuffle(participants);
-  const m = [];
-  let id = 1;
-  for (let i=0; i<p.length; i+=2){
-    m.push({ id:id++, left:p[i] ?? null, right:p[i+1] ?? null, winner:null, leftCount:0, rightCount:0 });
-  }
+  const p = shuffle(participants), m = []; let id = 1;
+  for (let i=0; i<p.length; i+=2){ m.push({ id:id++, left:p[i] ?? null, right:p[i+1] ?? null, winner:null, leftCount:0, rightCount:0 }); }
   return m;
 }
 function allResolved(matches){ return matches.every(x => x.winner !== null); }
@@ -132,12 +109,7 @@ async function initTournamentIfNeeded(){
     if (m.left && !m.right){ m.winner = m.left;  nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
-  await setDoc(ref, {
-    round: 1, matchIndex: 0, matches, nextCandidates,
-    champion: null,
-    threshold: VOTE_THRESHOLD,
-    updatedAt: serverTimestamp()
-  });
+  await setDoc(ref, { round:1, matchIndex:0, matches, nextCandidates, champion:null, threshold:VOTE_THRESHOLD, updatedAt:serverTimestamp() });
 }
 
 /* ===== ラウンド遷移 ===== */
@@ -145,7 +117,7 @@ async function startNextRound(docData){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const winners = docData.nextCandidates.slice();
   if (winners.length === 1){
-    // champion を保存（既存ロジックのまま）→ onSnapshot 側で即リセット
+    // ここは既存仕様どおり champion を保存（UI側で即リセット）
     await updateDoc(ref, { champion: winners[0], updatedAt: serverTimestamp() });
     return;
   }
@@ -155,13 +127,7 @@ async function startNextRound(docData){
     if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
-  await updateDoc(ref, {
-    round: (docData.round ?? 1) + 1,
-    matchIndex: 0,
-    matches,
-    nextCandidates,
-    updatedAt: serverTimestamp()
-  });
+  await updateDoc(ref, { round:(docData.round ?? 1)+1, matchIndex:0, matches, nextCandidates, updatedAt:serverTimestamp() });
 }
 
 /* ===== 投票 ===== */
@@ -193,6 +159,7 @@ async function vote(side){
 
       tx.update(ref, { matches, nextCandidates: next, matchIndex, updatedAt: serverTimestamp() });
 
+      /* 既存の即時チェック（残しつつ） */
       setTimeout(async () => {
         const after = (await getDoc(ref)).data();
         if (after && allResolved(after.matches)) await startNextRound(after);
@@ -215,12 +182,7 @@ async function resetTournament(){
     if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
-  await setDoc(ref, {
-    round: 1, matchIndex: 0, matches, nextCandidates,
-    champion: null,
-    threshold: VOTE_THRESHOLD,
-    updatedAt: serverTimestamp()
-  });
+  await setDoc(ref, { round:1, matchIndex:0, matches, nextCandidates, champion:null, threshold:VOTE_THRESHOLD, updatedAt:serverTimestamp() });
 }
 
 $("btn-left").addEventListener("click", () => vote('left'));
@@ -231,26 +193,32 @@ $("btn-reset").addEventListener("click", async ()=>{
 });
 
 /* ===== 表示のリアルタイム更新 ===== */
-/* 二重リセット防止用フラグ */
-let resetting = false;
+let resetting = false;      // 優勝→即リセットの二重防止
+let advancingRound = false; // ラウンド即時遷移の二重防止
 
 onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d){ $("status").textContent = "初期化中…"; return; }
 
-  /* ★ 修正点3：優勝が決まったら即リセット（表示しない） */
+  /* 優勝が決まったら表示せず自動リセット */
   if (d.champion && !resetting){
     resetting = true;
     $("status").textContent = "リセット中…";
-    // 非同期で即リセット（終われば次の onSnapshot が走る）
     resetTournament().finally(()=>{ resetting = false; });
-    return; // champion 画面は出さない
+    return;
+  }
+
+  /* ★ ラウンドが全試合終了したらすぐ次ラウンドへ（即時遷移） */
+  if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
+    advancingRound = true;
+    startNextRound(d).finally(()=>{ advancingRound = false; });
+    return; // 画面は次の onSnapshot で更新
   }
 
   $("badge-round").textContent = `Round ${d.round ?? 1}`;
 
   const idx = d.matchIndex ?? 0;
-  let match = d.matches?.[idx];
+  const match = d.matches?.[idx];
   $("info-line").textContent = `固定候補 ${OPTIONS.length} 件（先取 ${d.threshold} 票）`;
 
   if (!match){
