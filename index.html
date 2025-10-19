@@ -104,6 +104,11 @@ const OPTIONS = [
 const TOURNAMENT_DOC_ID = "main";
 const VOTE_THRESHOLD    = 1;
 
+/* ===== 表示補正（Round表示は内部+2、最大10） ===== */
+const DISPLAY_OFFSET = 2;
+const calcDisplayedRound = (internalRound) =>
+  Math.min((internalRound ?? 1) + DISPLAY_OFFSET, 10);
+
 /* ===== ユーティリティ ===== */
 function shuffle(arr){
   const a = arr.slice();
@@ -151,7 +156,7 @@ async function initTournamentIfNeeded(){
     threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
     totalCandidates: 128,
-    views: 0               // ★ 追加：閲覧数（新規開始時は0）
+    views: 0
   });
 }
 
@@ -239,7 +244,7 @@ async function reinitTournament(){
     champion: null, threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
     totalCandidates: 128,
-    views: 0               // ★ 追加：新トーナメント開始時に0へリセット
+    views: 0
   });
 }
 
@@ -256,7 +261,6 @@ async function bumpView(){
       tx.update(ref, { views: current + 1, updatedAt: serverTimestamp() });
     });
   } catch (e) {
-    // 失敗時は無視（UIはonSnapshotで更新される）
     console.error("bumpView failed:", e);
   }
 }
@@ -269,11 +273,11 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d) return;
 
-  // 表示ラウンド = 内部ラウンド + 2（最大10）
-  const displayedRound = Math.min(((d.round ?? 1) + 2), 10);
+  // 表示ラウンドは内部+2（最大10）
+  const displayedRound = calcDisplayedRound(d.round);
   $("round-label").textContent = `Round: ${displayedRound}`;
 
-  // 閲覧数表示を更新
+  // 閲覧数表示
   $("view-label").textContent = `Views: ${d.views ?? 0}`;
 
   // 優勝が決まったら、まず Round 10 を表示してから再初期化
@@ -284,7 +288,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
     return;
   }
 
-  // ラウンドが全試合終了したらすぐ次ラウンドへ
+  // ラウンドが全試合終了したら次ラウンド
   if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
     advancingRound = true;
     startNextRound(d).finally(()=>{ advancingRound = false; });
@@ -294,7 +298,6 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const idx = d.matchIndex ?? 0;
   const match = d.matches?.[idx];
 
-  // ラウンドの狭間でのフォールバック
   if (!match){
     if (!d.champion && Array.isArray(d.matches) && (allResolved(d.matches) || idx >= d.matches.length) && !advancingRound){
       advancingRound = true;
@@ -303,7 +306,6 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
     return;
   }
 
-  // 表示するのは候補名のみ
   $("label-left").textContent  = match.left  ?? "—";
   $("label-right").textContent = match.right ?? "—";
 
