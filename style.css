@@ -1,3 +1,10 @@
+/* =========================================================
+   Tournament UI — Poetic Single-Line Style (Dark Only)
+   - 背景は常に黒
+   - Round / Views / 質問文を1つの文章として中央に横並び
+   - ボタン語は常にピンク（全デバイス）
+   ========================================================= */
+
 :root{
   /* カラー */
   --bg:    #000000;
@@ -6,7 +13,7 @@
   --pink:  #ff0808; /* ボタン語のピンク */
 
   /* タイポ・レイアウト */
-  --font:  Georgia, "Hiragino Mincho ProN", "Hiragino Mincho Pro", "ヒラギノ明朝 ProN W3", "ヒラギノ明朝 Pro", "Times New Roman", serif;
+  --font:  "Hiragino Kaku Gothic ProN", "Hiragino Kaku Gothic Pro", "ヒラギノ角ゴ ProN W3", "ヒラギノ角ゴ Pro", Georgia, "Noto Sans JP", sans-serif;
   --fs:    clamp(18px, 2.2vw, 24px);
   --fsSub: clamp(14px, 1.8vw, 16px);
   --gap:   .35em;
@@ -20,9 +27,13 @@
 /* ベース */
 html, body{
   margin:0; padding:0;
+  height: 100%;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
+  display: flex;
+  justify-content: center;
+  align-items: center;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -30,7 +41,6 @@ html, body{
 /* “詩”としての1行風レイアウト：中央に横並び＋適度に折り返し */
 .qwrap{
   max-width: 1000px;
-  margin: 30px auto;
   padding: 0 16px;
   text-align: center;
 
@@ -43,7 +53,7 @@ html, body{
   font-size: var(--fs);
 }
 
-/* Round / Views */
+/* Round / Views を“文章の一部”として扱う */
 .round-label,
 .view-label{
   display: inline;
@@ -53,7 +63,7 @@ html, body{
   letter-spacing: .01em;
 }
 
-/* 質問文 */
+/* 質問文（○○ か ○○） */
 .question{
   display: inline;
   margin: 0;
@@ -61,7 +71,7 @@ html, body{
   letter-spacing: .01em;
 }
 
-/* ボタン語（ピンク固定） */
+/* ボタン語（○○）は常にピンク */
 .name-btn{
   appearance: none;
   border: none;
@@ -82,6 +92,7 @@ html, body{
   color: inherit;
 }
 
+/* “言葉に触れた”感じの最小限のフィードバック */
 .name-btn:hover{
   background: color-mix(in oklab, var(--pink) 16%, transparent);
 }
@@ -89,12 +100,14 @@ html, body{
   transform: translateY(1px);
 }
 
+/* フォーカス時はうっすらピンクのグロー */
 .name-btn:focus{
   outline: none;
   box-shadow:
     0 0 0 2px color-mix(in oklab, var(--pink) 35%, transparent);
 }
 
+/* 非アクティブ */
 .name-btn:disabled{
   opacity: .55;
   cursor: not-allowed;
@@ -105,4 +118,3 @@ html, body{
   .qwrap{ gap: .25em; }
   .question{ font-size: clamp(16px, 4.5vw, 20px); }
 }
-
