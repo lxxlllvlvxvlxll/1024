@@ -21,6 +21,11 @@
         <strong id="label-right">—</strong>
       </button>
     </p>
+
+    <!-- ✅ トーナメントリセットボタン -->
+    <p style="text-align:center; margin-top:10px;">
+      <button id="reset-btn" title="新しいトーナメントを開始">リセット</button>
+    </p>
   </div>
 
 <script type="module">
@@ -43,7 +48,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ===== 1024候補の配列 =====
+/* ===== 1024候補の配列 ===== */
 const OPTIONS = [
 "りんご","オレンジ","ぶどう","もも","スイカ","バナナ","パイナップル","いちご","マンゴー","メロン","キウイ",
 "さくらんぼ","レモン","ライム","ブルーベリー","ラズベリー","ブラックベリー","プラム","あんず","ココナッツ","パパイヤ",
@@ -76,7 +81,7 @@ const OPTIONS = [
 "砂漠","森","ジャングル","沼","草原","平原","ツンドラ","氷河","渓谷","崖",
 "火山","洞窟","滝","泉","間欠泉","波","潮","流れ","サンゴ礁","クジラ",
 "イルカ","サメ","アザラシ","ペンギン","ホッキョクグマ","トラ","ライオン","ヒョウ","チーター","ゾウ",
-"キリン","シマウマ","サイ","ハバ","シカ","ウサギ","キツネ","オオカミ","クマ","イヌ",
+"キリン","シマウマ","サイ","カバ","シカ","ウサギ","キツネ","オオカミ","クマ","イヌ",
 "ネコ","ウマ","ウシ","ブタ","ヒツジ","ヤギ","ニワトリ","アヒル","ガチョウ","ワシ",
 "タカ","フクロウ","オウム","クジャク","カラス","スズメ","ハト","ハクチョウ","フラミンゴ","チョウ",
 "ハチ","アリ","クモ","コオロギ","バッタ","トンボ","ホタル","カブトムシ","てんとう虫","ヘビ",
@@ -139,11 +144,6 @@ const OPTIONS = [
 "無限","永遠","瞬間","未来","過去","現在","記憶","夢世界","想像","現実"
 ];
 
-*/
-const OPTIONS = [
-  /* --- paste your original 1024 items here (省略) --- */
-];
-
 /* ===== パラメータ ===== */
 const TOURNAMENT_DOC_ID = "main";
 const VOTE_THRESHOLD    = 1;
@@ -172,7 +172,6 @@ function buildMatches(participants){
   return m;
 }
 function allResolved(matches){ return matches.every(x => x.winner !== null); }
-/* ✅ 追加：最初の“プレイ可能”試合を指すインデックス */
 function firstPlayableIndex(matches){
   let i = 0;
   while (i < matches.length) {
@@ -199,7 +198,6 @@ async function initTournamentIfNeeded(){
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
 
-  /* ✅ 不戦勝を反映した上で最初のプレイ可能試合へ */
   const matchIndex = firstPlayableIndex(matches);
 
   await setDoc(ref, {
@@ -216,7 +214,6 @@ async function initTournamentIfNeeded(){
 }
 
 /* ===== ラウンド遷移 ===== */
-/* ✅ 置き換え：トランザクションで単発実行＆playableIndex を設定 */
 async function startNextRound(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
@@ -228,12 +225,10 @@ async function startNextRound(){
     const winners = (d.nextCandidates ?? []).slice();
     if (winners.length === 0) return;
 
-    // まだ現ラウンドに未決着があれば遷移しない（二重トリガー防止）
     const matches = d.matches ?? [];
     if (!allResolved(matches)) return;
 
     if (winners.length === 1){
-      // ✅ チャンピオン確定のみ
       tx.update(ref, { champion: winners[0], updatedAt: serverTimestamp() });
       return;
     }
@@ -257,7 +252,6 @@ async function startNextRound(){
 }
 
 /* ===== 投票 ===== */
-/* ✅ 変更：setTimeout(startNextRound) を削除し、次インデックスは bye/決着済みをスキップ */
 async function vote(side){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
@@ -299,8 +293,14 @@ async function vote(side){
 const $ = (id)=>document.getElementById(id);
 $("btn-left").addEventListener("click", () => vote('left'));
 $("btn-right").addEventListener("click", () => vote('right'));
+/* ✅ 追加：リセットボタンのイベント */
+$("reset-btn").addEventListener("click", () => {
+  if (confirm("トーナメントをリセットして新しく開始しますか？")) {
+    reinitTournament();
+  }
+});
 
-/* ===== 自動再初期化（新しい128を毎回抽選） ===== */
+/* ===== 自動再初期化 ===== */
 async function reinitTournament(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const allShuffled = shuffle(OPTIONS);
@@ -311,7 +311,6 @@ async function reinitTournament(){
     if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
-  /* ✅ ここでも playableIndex を設定 */
   const matchIndex = firstPlayableIndex(matches);
 
   await setDoc(ref, {
@@ -323,7 +322,7 @@ async function reinitTournament(){
   });
 }
 
-/* ===== 閲覧数加算（優勝が決まるまで1ビュー＝+1） ===== */
+/* ===== 閲覧数加算 ===== */
 async function bumpView(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   try {
@@ -331,7 +330,7 @@ async function bumpView(){
       const snap = await tx.get(ref);
       if (!snap.exists()) return;
       const d = snap.data();
-      if (d.champion) return; // 優勝後は加算しない
+      if (d.champion) return;
       const current = d.views ?? 0;
       tx.update(ref, { views: current + 1, updatedAt: serverTimestamp() });
     });
@@ -340,49 +339,39 @@ async function bumpView(){
   }
 }
 
-/* ===== 新トーナメント検出で自動ビュー加算 ===== */
+/* ===== 新トーナメント検出 ===== */
 let lastTournamentMarker = null;
-
-/* ===== 状態監視 ===== */
 let resetting = false;
 
 onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d) return;
 
-  // 新トーナメント識別：先頭数試合の組合せをマーカー化
   const marker = JSON.stringify((d.matches ?? []).slice(0, 6).map(m => [m.left, m.right]));
   if (marker && marker !== lastTournamentMarker) {
-    // Round10終了→再抽選直後は round=1 & views=0 のはず → その場の閲覧者を+1
     if ((d.round ?? 1) === 1 && (d.views ?? 0) === 0) {
       bumpView();
     }
-    lastTournamentMarker = marker; // 二重加算防止
+    lastTournamentMarker = marker;
   }
 
-  // 表示ラウンド（内部+2、最大10）
   const displayedRound = calcDisplayedRound(d.round);
   $("round-label").textContent = `Round: ${displayedRound}`;
-
-  // 閲覧数表示
   $("view-label").textContent = `Views: ${d.views ?? 0}`;
 
-  // ✅ チャンピオンを数秒表示してから再初期化
   if (d.champion && !resetting){
     $("round-label").textContent = "Round: 10";
     $("label-left").textContent  = d.champion;
     $("label-right").textContent = "—";
     $("btn-left").disabled  = true;
     $("btn-right").disabled = true;
-
     resetting = true;
     setTimeout(() => {
       reinitTournament().finally(()=>{ resetting = false; });
-    }, 3000); // 表示時間（ms）
+    }, 3000);
     return;
   }
 
-  // ✅ ラウンドが全試合終了したら次ラウンドへ（単発：関数内でトランザクション判定）
   if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches)){
     startNextRound();
     return;
@@ -390,10 +379,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
 
   const idx = d.matchIndex ?? 0;
   const match = d.matches?.[idx];
-
-  if (!match){
-    return;
-  }
+  if (!match) return;
 
   $("label-left").textContent  = match.left  ?? "—";
   $("label-right").textContent = match.right ?? "—";
@@ -403,7 +389,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   $("btn-right").disabled = !playable;
 });
 
-/* ===== 起動：初回表示の閲覧をカウント ===== */
+/* ===== 起動 ===== */
 initTournamentIfNeeded().then(() => bumpView());
 </script>
 </body>
