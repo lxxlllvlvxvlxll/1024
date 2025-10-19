@@ -386,7 +386,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   $("btn-right").disabled = !playable;
 });
 
-reinitTournament().then(() => bumpView());
+initTournamentIfNeeded().then(() => bumpView());
 </script>
 </body>
 </html>
