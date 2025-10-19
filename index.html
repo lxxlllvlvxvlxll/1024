@@ -6,69 +6,62 @@
 <title></title>
 <style>
   html, body {
-    margin:0; padding:0; background:#fff; color:#111;
+    margin:0; padding:0;
+    background:#fff; color:#111;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
   .qwrap {
-    max-width: 900px; margin: 20px auto; padding: 0 12px; text-align: center;
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 0 12px;
+    text-align: center;
   }
-  .round-label { font-size: clamp(14px, 2vw, 18px); color:#555; margin-bottom: 8px; }
-  .question { font-size: clamp(18px, 2.4vw, 24px); line-height: 1.8; margin: 0; }
+  .round-label {
+    font-size: clamp(14px, 2vw, 18px);
+    color: #555;
+    margin-bottom: 8px;
+  }
+  .question {
+    font-size: clamp(18px, 2.4vw, 24px);
+    line-height: 1.8;
+    margin: 0;
+  }
   .name-btn {
-    appearance: none; border: none; background: transparent;
-    padding: 4px; margin: 0 6px; font: inherit; cursor: pointer; border-radius: 10px;
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 0 4px;
+    margin: 0 2px;
+    font: inherit;
+    cursor: pointer;
+    border-radius: 8px;
   }
-  .name-btn:hover { background:#f8fafc; outline:1px solid #e5e7eb; }
-  .name-btn:disabled { cursor: not-allowed; opacity:.5; outline: none; }
-  .name-btn .thumb {
-    display:block; width: 200px; height: 200px; object-fit: cover; border-radius: 10px;
-    box-shadow: 0 1px 2px rgba(0,0,0,.08);
-  }
-  .name-btn .label { display:block; margin-top:6px; font-weight:600; font-size: 14px; }
-  .topbar {
-    position: sticky; top:0; background:#fff; border-bottom:1px solid #eee;
-    padding: 8px 12px; display:flex; justify-content:center; gap:8px; z-index: 1;
-  }
-  .upload-btn {
-    appearance:none; border:1px solid #e5e7eb; background:#f8fafc; color:#111;
-    padding:6px 10px; border-radius:8px; cursor:pointer; font:inherit;
-  }
-  .upload-btn:hover { background:#eef2f7; }
-  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }
+  .name-btn strong { font-weight: 700; }
+  .name-btn:hover { background: #f8fafc; outline: 1px solid #e5e7eb; }
+  .name-btn:disabled { cursor: not-allowed; opacity: .5; outline: none; }
 </style>
 </head>
 <body>
-  <!-- アップロード用トップバー（誰でも候補追加OK） -->
-  <div class="topbar">
-    <button class="upload-btn" id="open-upload">＋ 画像を候補に追加</button>
-    <input type="file" id="file-input" accept="image/*" class="sr-only" />
-  </div>
-
   <div class="qwrap">
     <p class="round-label" id="round-label">Round: —</p>
     <p class="question" aria-live="polite">
       <button class="name-btn" id="btn-left" title="左に投票">
-        <img id="img-left" class="thumb" alt="左の候補" src="" />
-        <span id="label-left" class="label">—</span>
+        <strong id="label-left">—</strong>
       </button>
       か
       <button class="name-btn" id="btn-right" title="右に投票">
-        <img id="img-right" class="thumb" alt="右の候補" src="" />
-        <span id="label-right" class="label">—</span>
+        <strong id="label-right">—</strong>
       </button>
     </p>
   </div>
 
 <script type="module">
-/* ===== Firebase v12.4.0（固定） ===== */
+/* ===== Firebase v12.4.0 ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot,
-  serverTimestamp, collection, addDoc, getDocs, query, limit, orderBy
+  getFirestore, doc, getDoc, setDoc, updateDoc,
+  runTransaction, onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
-import {
-  getStorage, ref as storageRef, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCRHvaE9WMODFhDau9sgqs11lzkW6wrFbc",
@@ -80,16 +73,37 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
-const st  = getStorage(app);
 
-/* ===== 定数 ===== */
+/* ===== 候補一覧（1024件） ===== */
+const OPTIONS = [
+"りんご","オレンジ","ぶどう","もも","スイカ","バナナ","パイナップル","いちご","マンゴー","メロン",
+"キウイ","さくらんぼ","レモン","ライム","ブルーベリー","ラズベリー","ブラックベリー","プラム","あんず","ココナッツ",
+"パパイヤ","いちじく","デーツ","グアバ","ライチ","パッションフルーツ","ザクロ","クランベリー","みかん","かき",
+"マルベリー","トマト","アボカド","オリーブ","きゅうり","かぼちゃ","にんじん","じゃがいも","たまねぎ","にんにく",
+"ブロッコリー","カリフラワー","ほうれんそう","レタス","キャベツ","セロリ","えんどう","まめ","とうもろこし","こめ",
+"むぎ","オート麦","大麦","ライ麦","きび","もろこし","キヌア","アマランサス","そば","アーモンド",
+"くるみ","ピーカンナッツ","ヘーゼルナッツ","カシューナッツ","ピスタチオ","マカダミアナッツ","くり","ピーナッツ","ひまわり","ごま",
+"チア","ココナッツウォーター","はちみつ","砂糖","塩","こしょう","酢","油","バター","チーズ",
+"牛乳","クリーム","ヨーグルト","卵","パン","ケーキ","パイ","クッキー","チョコレート","キャンディ",
+"コーヒー","お茶","ジュース","水","ソーダ","ビール","ワイン","ウイスキー","ラム","ウォッカ",
+"ジン","ブランデー","シャンパン","シードル","スムージー","スープ","シチュー","サラダ","パスタ","ピザ",
+"バーガー","サンドイッチ","すし","カレー","ステーキ","チキン","ビーフ","ポーク","魚","えび",
+"かに","ロブスター","たこ","いか","豆腐","めん","ぎょうざ","おにぎり","弁当","てんぷら",
+"ラーメン","うどん","そば","シリアル","おかゆ","オムレツ","トースト","ジャム","バタートースト","チーズトースト",
+"ポップコーン","ナチョス","タコス","ブリトー","ケサディーヤ","ホットドッグ","フライドポテト","ケチャップ","マスタード","マヨネーズ",
+"カップラーメン","インスタント麺","もち","プリン","アイスクリーム","ジェラート","ソルベ","ドーナツ","パンケーキ","ワッフル",
+"マフィン","クロワッサン","ベーグル","プレッツェル","ビスケット","グラノーラ","トレイルミックス","ソーセージ","ハム","ベーコン",
+"サラミ","プロシュート","キャビア","さしみ","天ぷらえび","焼き魚","てりやき","やきとり","そばめん","すきやき",
+"しゃぶしゃぶ","なべ","キムチ","ビビンバ","トッポギ","キンパ","フォー","春巻き","水餃子","チャーハン",
+"キャセロール","リゾット","パエリア","ラザニア","スパゲッティ","カルボナーラ","ボロネーゼ","ティラミス","ゼリー","カスタード",
+"トリュフ","魚卵","わさび","しょうゆ","みそ","海藻","のり","ごま油","日本酒","焼酎"
+];
+
+/* ===== パラメータ ===== */
 const TOURNAMENT_DOC_ID = "main";
 const VOTE_THRESHOLD    = 1;
-const MAX_POOL          = 1024; // プール上限（任意）
-const DRAW_SIZE         = 128;  // 毎大会の抽選枚数
 
 /* ===== ユーティリティ ===== */
-function $(id){ return document.getElementById(id); }
 function shuffle(arr){
   const a = arr.slice();
   for (let i=a.length-1; i>0; i--){
@@ -98,56 +112,30 @@ function shuffle(arr){
   }
   return a;
 }
-
-/** Firestore: images コレクションから候補を最大 MAX_POOL 取得 */
-async function fetchImagePool(){
-  const q = query(collection(db, "images"), orderBy("createdAt", "desc"), limit(MAX_POOL));
-  const snap = await getDocs(q);
-  const items = [];
-  snap.forEach(d => {
-    const v = d.data();
-    if (!v || !v.url) return;
-    items.push({
-      id: d.id,
-      name: v.name || "untitled",
-      url: v.url
-    });
-  });
-  return items;
-}
-
-/** 画像128枚をランダム抽選して試合カードを作る */
 function buildMatches(participants){
   const p = shuffle(participants);
   const m = [];
   let id = 1;
   for (let i=0; i<p.length; i+=2){
-    m.push({
-      id: id++,
-      left:  p[i]   ?? null, // {id,name,url} or null
-      right: p[i+1] ?? null,
-      winner: null,
-      leftCount: 0,
-      rightCount: 0
-    });
+    m.push({ id:id++, left:p[i] ?? null, right:p[i+1] ?? null, winner:null, leftCount:0, rightCount:0 });
   }
   return m;
 }
 function allResolved(matches){ return matches.every(x => x.winner !== null); }
 
-/* ===== 初期化（images プールから毎回ランダムに128枚抽選） ===== */
+/* ===== 初期化（毎回1024→128候補ランダム抽出） ===== */
 async function initTournamentIfNeeded(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const snap = await getDoc(ref);
   if (snap.exists()) return;
 
-  const pool = await fetchImagePool();
-  const draw = shuffle(pool).slice(0, DRAW_SIZE);
+  const allShuffled = shuffle(OPTIONS);
+  const selected128 = allShuffled.slice(0, 128);
 
-  const matches = buildMatches(draw);
+  const matches = buildMatches(selected128);
   const nextCandidates = [];
   for (const m of matches){
-    if (m.left && !m.right){ m.winner = m.left;  nextCandidates.push(m.left); }
+    if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
 
@@ -155,11 +143,11 @@ async function initTournamentIfNeeded(){
     round: 1,
     matchIndex: 0,
     matches,
-    nextCandidates,         // 次ラウンド候補（{id,name,url}）
+    nextCandidates,
     champion: null,
     threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
-    totalCandidates: draw.length
+    totalCandidates: 128
   });
 }
 
@@ -168,7 +156,6 @@ async function startNextRound(docData){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const winners = (docData.nextCandidates ?? []).slice();
   if (winners.length === 0) return;
-
   if (winners.length === 1){
     await updateDoc(ref, { champion: winners[0], updatedAt: serverTimestamp() });
     return;
@@ -196,7 +183,6 @@ async function vote(side){
     if (!snap.exists()) throw "not-found";
     const d = snap.data();
     if (d.champion) return;
-
     const idx = d.matchIndex ?? 0;
     const matches = d.matches ?? [];
     const m = matches[idx];
@@ -208,11 +194,9 @@ async function vote(side){
 
     const threshold = d.threshold ?? VOTE_THRESHOLD;
     if ((m.leftCount ?? 0) >= threshold || (m.rightCount ?? 0) >= threshold){
-      const winnerObj = (m.leftCount >= m.rightCount) ? m.left : m.right;
-      m.winner = winnerObj;
-
+      m.winner = (m.leftCount >= m.rightCount) ? m.left : m.right;
       const next = (d.nextCandidates ?? []).slice();
-      next.push(winnerObj);
+      next.push(m.winner);
 
       let matchIndex = (d.matchIndex ?? 0) + 1;
       while (matchIndex < matches.length && matches[matchIndex].winner) matchIndex++;
@@ -220,11 +204,8 @@ async function vote(side){
       tx.update(ref, { matches, nextCandidates: next, matchIndex, updatedAt: serverTimestamp() });
 
       setTimeout(async () => {
-        const afterSnap = await getDoc(ref);
-        const after = afterSnap.data();
-        if (after && Array.isArray(after.matches) && allResolved(after.matches)){
-          await startNextRound(after);
-        }
+        const after = (await getDoc(ref)).data();
+        if (after && allResolved(after.matches)) await startNextRound(after);
       }, 0);
     } else {
       tx.update(ref, { matches, updatedAt: serverTimestamp() });
@@ -232,68 +213,27 @@ async function vote(side){
   });
 }
 
-/* ===== 画像アップロード ===== */
-$("open-upload").addEventListener("click", () => $("file-input").click());
-$("file-input").addEventListener("change", async (ev) => {
-  const file = ev.target.files?.[0];
-  if (!file) return;
-
-  // 1) Storageにアップロード
-  const path = `candidates/${Date.now()}_${Math.random().toString(36).slice(2)}_${file.name}`;
-  const sref = storageRef(st, path);
-  await uploadBytes(sref, file);
-  const url = await getDownloadURL(sref);
-
-  // 2) Firestoreに登録（名前はファイル名から拡張子を除いたもの）
-  const baseName = (file.name || "untitled").replace(/\.[^.]+$/, "");
-  await addDoc(collection(db, "images"), {
-    name: baseName,
-    url,
-    createdAt: serverTimestamp()
-  });
-
-  // 3) アラート（必要ならトーストなどに差し替え）
-  alert("画像を候補に追加しました。次の大会で抽選対象になります。");
-  ev.target.value = ""; // 同じファイルを続けて選べるようにリセット
-});
-
-/* ===== 表示更新 ===== */
-function renderMatch(match){
-  const left  = match?.left  ?? null;
-  const right = match?.right ?? null;
-
-  $("img-left").src  = left?.url  || "";
-  $("img-right").src = right?.url || "";
-  $("label-left").textContent  = left?.name  || "—";
-  $("label-right").textContent = right?.name || "—";
-
-  const playable = !!(left && right && !match.winner);
-  $("btn-left").disabled  = !playable;
-  $("btn-right").disabled = !playable;
-}
-
-/* ===== UIイベント（投票） ===== */
+/* ===== UI制御 ===== */
+const $ = (id)=>document.getElementById(id);
 $("btn-left").addEventListener("click", () => vote('left'));
 $("btn-right").addEventListener("click", () => vote('right'));
 
-/* ===== チャンピオン確定後：新大会を自動開始（再抽選） ===== */
+/* ===== 自動再初期化 ===== */
 async function reinitTournament(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
-
-  const pool = await fetchImagePool();
-  const draw = shuffle(pool).slice(0, DRAW_SIZE);
-
-  const matches = buildMatches(draw);
+  const allShuffled = shuffle(OPTIONS);
+  const selected128 = allShuffled.slice(0, 128);
+  const matches = buildMatches(selected128);
   const nextCandidates = [];
   for (const m of matches){
-    if (m.left && !m.right){ m.winner = m.left;  nextCandidates.push(m.left); }
+    if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
   await setDoc(ref, {
     round: 1, matchIndex: 0, matches, nextCandidates,
     champion: null, threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
-    totalCandidates: draw.length
+    totalCandidates: 128
   });
 }
 
@@ -305,28 +245,24 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d) return;
 
-  // ラウンド表示
+  // Round表示を更新
   $("round-label").textContent = d.round ? `Round: ${d.round}` : "Round: —";
 
-  // チャンピオン確定 → 新大会に自動再抽選
   if (d.champion && !resetting){
     resetting = true;
     reinitTournament().finally(()=>{ resetting = false; });
     return;
   }
 
-  // ラウンド終了→即時次ラウンド生成
   if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
     advancingRound = true;
     startNextRound(d).finally(()=>{ advancingRound = false; });
     return;
   }
 
-  // 現在のマッチを表示
   const idx = d.matchIndex ?? 0;
   const match = d.matches?.[idx];
 
-  // ラウンドの狭間でのフォールバック
   if (!match){
     if (!d.champion && Array.isArray(d.matches) && (allResolved(d.matches) || idx >= d.matches.length) && !advancingRound){
       advancingRound = true;
@@ -335,10 +271,15 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
     return;
   }
 
-  renderMatch(match);
+  $("label-left").textContent  = match.left  ?? "—";
+  $("label-right").textContent = match.right ?? "—";
+
+  const playable = !!(match.left && match.right && !match.winner);
+  $("btn-left").disabled  = !playable;
+  $("btn-right").disabled = !playable;
 });
 
-/* ===== 起動：初期化 ===== */
+/* ===== 起動 ===== */
 initTournamentIfNeeded();
 </script>
 </body>
