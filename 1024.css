@@ -1,0 +1,157 @@
+/* =========================================================
+   Tournament Minimal UI Styles
+   - 変数ベースで調整しやすく
+   - ライト/ダーク、縮小表示、キーボード操作に配慮
+   ========================================================= */
+
+/* ---------- 基本のCSS変数（テーマ） ---------- */
+:root{
+  /* 配色 */
+  --bg:            #ffffff;
+  --fg:            #111111;
+  --muted-fg:      #555555;
+  --border:        #e5e7eb;
+  --hover:         #f8fafc;
+  --brand:         #2563eb;
+
+  /* タイポグラフィ */
+  --font-family:   system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fs-quest-min:  18px;
+  --fs-quest-max:  24px;
+  --fs-meta-min:   14px;
+  --fs-meta-max:   18px;
+
+  /* レイアウト */
+  --wrap-max:      900px;
+  --wrap-pad:      12px;
+  --wrap-gap:      8px;
+  --radius:        8px;
+
+  /* アニメーション */
+  --dur-fast:      120ms;
+  --ease:          cubic-bezier(.2,.7,.3,1);
+}
+
+/* ---------- ダークテーマ（自動） ---------- */
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:       #0b0b0c;
+    --fg:       #f5f5f6;
+    --muted-fg: #a1a1aa;
+    --border:   #1f2937;
+    --hover:    #111827;
+    --brand:    #60a5fa;
+  }
+}
+
+/* ---------- ベース ---------- */
+html, body{
+  margin:0;
+  padding:0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after{ box-sizing: border-box; }
+
+/* 画面中央のラッパー */
+.qwrap{
+  max-width: var(--wrap-max);
+  margin: 20px auto;
+  padding: 0 var(--wrap-pad);
+  text-align: center;
+  display: grid;
+  grid-auto-rows: min-content;
+  row-gap: var(--wrap-gap);
+}
+
+/* メタ情報（Round/Views） */
+.round-label,
+.view-label{
+  font-size: clamp(var(--fs-meta-min), 2vw, var(--fs-meta-max));
+  color: var(--muted-fg);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* 質問行（対戦カード） */
+.question{
+  font-size: clamp(var(--fs-quest-min), 2.4vw, var(--fs-quest-max));
+  line-height: 1.8;
+  margin: 0;
+  letter-spacing: .01em;
+}
+
+/* 選択ボタン（テキスト風） */
+.name-btn{
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0 .3em;
+  margin: 0 .15em;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+  position: relative;
+}
+
+.name-btn strong{ font-weight: 700; }
+
+/* hover / focus / active */
+.name-btn:hover{
+  background: var(--hover);
+  border-color: var(--border);
+}
+
+.name-btn:focus{
+  outline: none;
+  border-color: color-mix(in oklab, var(--brand) 60%, var(--border));
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--brand) 20%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--brand) 60%, var(--border));
+}
+
+.name-btn:active{
+  transform: translateY(1px);
+}
+
+.name-btn:disabled{
+  cursor: not-allowed;
+  opacity: .55;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* ---------- ユーティリティ（必要に応じて） ---------- */
+.u-muted{ color: var(--muted-fg) !important; }
+.u-hide{ display: none !important; }
+.u-inline{ display: inline !important; }
+
+/* ---------- レイアウト微調整（狭い幅用） ---------- */
+@media (max-width: 420px){
+  .qwrap{ row-gap: 6px; }
+  .name-btn{ margin: 0 .1em; }
+}
+
+/* ---------- 低モーション設定 ---------- */
+@media (prefers-reduced-motion: reduce){
+  *{ animation: none !important; transition: none !important; }
+}
+
+/* ---------- 余白・境界線のガイド（デバッグ用） ----------
+   必要な時だけ .qwrap に .debug を付けて確認できます
+-----------------------------------------------------------*/
+.qwrap.debug{
+  outline: 1px dashed var(--border);
+}
+.qwrap.debug .name-btn{
+  outline: 1px dashed color-mix(in oklab, var(--brand) 35%, var(--border));
+}
