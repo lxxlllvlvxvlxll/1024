@@ -43,7 +43,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ===== 1024候補の配列 ===== */
+/* ===== 1024候補の配列 =====
+
 const OPTIONS = [
 "りんご","オレンジ","ぶどう","もも","スイカ","バナナ","パイナップル","いちご","マンゴー","メロン","キウイ",
 "さくらんぼ","レモン","ライム","ブルーベリー","ラズベリー","ブラックベリー","プラム","あんず","ココナッツ","パパイヤ",
@@ -139,10 +140,12 @@ const OPTIONS = [
 "無限","永遠","瞬間","未来","過去","現在","記憶","夢世界","想像","現実"
 ];
 
-
 /* ===== パラメータ ===== */
 const TOURNAMENT_DOC_ID = "main";
 const VOTE_THRESHOLD    = 1;
+
+/* ===== このクライアントのID（リセットの排他制御に使用） ===== */
+const CLIENT_ID = (crypto.randomUUID?.() ?? String(Math.random()).slice(2));
 
 /* ===== 表示補正（Round表示は内部+2、最大10） ===== */
 const DISPLAY_OFFSET = 2;
@@ -168,6 +171,7 @@ function buildMatches(participants){
   return m;
 }
 function allResolved(matches){ return matches.every(x => x.winner !== null); }
+/* ✅ 追加：最初の“プレイ可能”試合を指すインデックス */
 function firstPlayableIndex(matches){
   let i = 0;
   while (i < matches.length) {
@@ -194,6 +198,7 @@ async function initTournamentIfNeeded(){
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
 
+  /* ✅ 不戦勝を反映した上で最初のプレイ可能試合へ */
   const matchIndex = firstPlayableIndex(matches);
 
   await setDoc(ref, {
@@ -205,11 +210,15 @@ async function initTournamentIfNeeded(){
     threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
     totalCandidates: 128,
-    views: 0
+    views: 0,
+    /* ✅ 新規フィールド：チャンピオン後のリセット排他制御 */
+    resetLock: null,
+    championAt: null
   });
 }
 
 /* ===== ラウンド遷移 ===== */
+/* ✅ 置き換え：トランザクションで単発実行＆playableIndex を設定（championAt/resetLockも管理） */
 async function startNextRound(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
@@ -220,11 +229,19 @@ async function startNextRound(){
 
     const winners = (d.nextCandidates ?? []).slice();
     if (winners.length === 0) return;
+
+    // まだ現ラウンドに未決着があれば遷移しない（二重トリガー防止）
     const matches = d.matches ?? [];
     if (!allResolved(matches)) return;
 
     if (winners.length === 1){
-      tx.update(ref, { champion: winners[0], updatedAt: serverTimestamp() });
+      // ✅ チャンピオン確定：championAt を付与し、resetLock をクリア
+      tx.update(ref, {
+        champion: winners[0],
+        championAt: serverTimestamp(),
+        resetLock: null,
+        updatedAt: serverTimestamp()
+      });
       return;
     }
 
@@ -247,6 +264,7 @@ async function startNextRound(){
 }
 
 /* ===== 投票 ===== */
+/* ✅ 変更：setTimeout(startNextRound) を削除し、次インデックスは bye/決着済みをスキップ */
 async function vote(side){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
@@ -289,7 +307,7 @@ const $ = (id)=>document.getElementById(id);
 $("btn-left").addEventListener("click", () => vote('left'));
 $("btn-right").addEventListener("click", () => vote('right'));
 
-/* ===== 自動再初期化 ===== */
+/* ===== 自動再初期化（新しい128を毎回抽選） ===== */
 async function reinitTournament(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const allShuffled = shuffle(OPTIONS);
@@ -300,6 +318,7 @@ async function reinitTournament(){
     if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
+  /* ✅ ここでも playableIndex を設定 */
   const matchIndex = firstPlayableIndex(matches);
 
   await setDoc(ref, {
@@ -307,23 +326,15 @@ async function reinitTournament(){
     champion: null, threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
     totalCandidates: 128,
-    views: 0
+    views: 0,
+    /* ✅ リセット後はロックを解放 */
+    resetLock: null,
+    championAt: null
   });
 }
 
-/* ===== ✅ 初回ロード時に強制リセット（同タブで一度だけ） ===== */
-async function hardResetOnFirstLoad(){
-  if (sessionStorage.getItem("tournamentHardResetDone") === "1") return;
-  sessionStorage.setItem("tournamentHardResetDone", "1");
-  try {
-    await reinitTournament();
-    console.log("Tournament hard reset done.");
-  } catch (e) {
-    console.error("hardResetOnFirstLoad failed:", e);
-  }
-}
-
-/* ===== 閲覧数加算 ===== */
+/* ===== 閲覧数加算（優勝が決まるまで1ビュー＝+1） ===== */
+/* ✅ 修正：onlyIfZero=true のときは views===0 の場合のみ原子的に +1（新トーナメント開始時の過剰加算を防止） */
 async function bumpView(onlyIfZero = false){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   try {
@@ -331,9 +342,13 @@ async function bumpView(onlyIfZero = false){
       const snap = await tx.get(ref);
       if (!snap.exists()) return;
       const d = snap.data();
-      if (d.champion) return;
+      if (d.champion) return; // 優勝後は加算しない
       const current = d.views ?? 0;
-      if (onlyIfZero && current > 0) return;
+
+      if (onlyIfZero && current > 0) {
+        return; // 新トーナメント自動加算は 0→1 のときだけ
+      }
+
       tx.update(ref, { views: current + 1, updatedAt: serverTimestamp() });
     });
   } catch (e) {
@@ -341,34 +356,86 @@ async function bumpView(onlyIfZero = false){
   }
 }
 
+/* ===== 新トーナメント検出で自動ビュー加算 ===== */
 let lastTournamentMarker = null;
-let resetting = false;
 
-/* ===== メイン処理 ===== */
-await hardResetOnFirstLoad(); // ✅ ここでページ初回ロード時に強制リセット
+/* ===== チャンピオン後のリセット：排他ロック取得＆遅延実行 ===== */
+let resetTimerStarted = false;
+async function acquireResetLockAndSchedule(d){
+  if (resetTimerStarted) return;
+  resetTimerStarted = true;
 
+  const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+  let iHoldTheLock = false;
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const cur = snap.data();
+
+    // すでにロックがあり、他人のロックなら何もしない
+    if (cur.resetLock && cur.resetLock.by && cur.resetLock.by !== CLIENT_ID) {
+      return;
+    }
+    // ロックが無ければ自分が取得
+    if (!cur.resetLock) {
+      tx.update(ref, { resetLock: { by: CLIENT_ID, at: serverTimestamp() } });
+      iHoldTheLock = true;
+      return;
+    }
+    // 自分のロックなら保持
+    if (cur.resetLock && cur.resetLock.by === CLIENT_ID) {
+      iHoldTheLock = true;
+    }
+  });
+
+  // 自分がロックを持っていないなら終了（他クライアントが担当）
+  if (!iHoldTheLock) {
+    resetTimerStarted = false;
+    return;
+  }
+
+  // 数秒待ってから再チェックし、ロック保持者のみ再初期化を実行
+  setTimeout(async () => {
+    const snap = await getDoc(ref);
+    const after = snap.data?.();
+    if (after && after.resetLock && after.resetLock.by === CLIENT_ID && after.champion) {
+      await reinitTournament();
+    }
+    resetTimerStarted = false;
+  }, 3000); // 表示時間（ms）
+}
+
+/* ===== 状態監視 ===== */
 onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d) return;
 
+  // 新トーナメント識別：先頭数試合の組合せをマーカー化
   const marker = JSON.stringify((d.matches ?? []).slice(0, 6).map(m => [m.left, m.right]));
   if (marker && marker !== lastTournamentMarker) {
-    if ((d.round ?? 1) === 1 && (d.views ?? 0) === 0) bumpView(true);
-    lastTournamentMarker = marker;
+    // Round10終了→再抽選直後は round=1 & views=0 のはず → その場の閲覧者を+1（0→1 の時だけ原子的に加算）
+    if ((d.round ?? 1) === 1 && (d.views ?? 0) === 0) {
+      bumpView(true); // ✅ ここは「views が 0 の時だけ」加算
+    }
+    lastTournamentMarker = marker; // 二重加算防止（クライアント内）
   }
 
-  $("round-label").textContent = `進行中のラウンド: ${calcDisplayedRound(d.round)}`;
-  $("view-label").textContent = `閲覧数: ${d.views ?? 0}`;
+  // 表示ラウンド（内部+2、最大10）
+  const displayedRound = calcDisplayedRound(d.round);
+  $("round-label").textContent = `Round: ${displayedRound}`;
 
-  if (d.champion && !resetting){
+  // 閲覧数表示
+  $("view-label").textContent = `Views: ${d.views ?? 0}`;
+
+  // ✅ チャンピオン確定時：UIはそのまま、リセットは排他ロックで1クライアントのみ担当
+  if (d.champion){
     $("round-label").textContent = "Round: 10";
-    resetting = true;
-    setTimeout(() => {
-      reinitTournament().finally(()=>{ resetting = false; });
-    }, 3000);
+    acquireResetLockAndSchedule(d);
     return;
   }
 
+  // ✅ ラウンドが全試合終了したら次ラウンドへ（単発：関数内でトランザクション判定）
   if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches)){
     startNextRound();
     return;
@@ -376,7 +443,10 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
 
   const idx = d.matchIndex ?? 0;
   const match = d.matches?.[idx];
-  if (!match) return;
+
+  if (!match){
+    return;
+  }
 
   $("label-left").textContent  = match.left  ?? "—";
   $("label-right").textContent = match.right ?? "—";
@@ -386,6 +456,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   $("btn-right").disabled = !playable;
 });
 
+/* ===== 起動：初回表示の閲覧をカウント ===== */
 initTournamentIfNeeded().then(() => bumpView());
 </script>
 </body>
