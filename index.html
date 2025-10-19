@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
   <div class="qwrap">
     <p class="round-label" id="round-label">Round: —</p>
     <p class="view-label"  id="view-label">Views: 0</p>
@@ -75,7 +76,7 @@ const OPTIONS = [
 "砂漠","森","ジャングル","沼","草原","平原","ツンドラ","氷河","渓谷","崖",
 "火山","洞窟","滝","泉","間欠泉","波","潮","流れ","サンゴ礁","クジラ",
 "イルカ","サメ","アザラシ","ペンギン","ホッキョクグマ","トラ","ライオン","ヒョウ","チーター","ゾウ",
-"キリン","シマウマ","サイ","カバ","シカ","ウサギ","キツネ","オオカミ","クマ","イヌ",
+"キリン","シマウマ","サイ","ハバ","シカ","ウサギ","キツネ","オオカミ","クマ","イヌ",
 "ネコ","ウマ","ウシ","ブタ","ヒツジ","ヤギ","ニワトリ","アヒル","ガチョウ","ワシ",
 "タカ","フクロウ","オウム","クジャク","カラス","スズメ","ハト","ハクチョウ","フラミンゴ","チョウ",
 "ハチ","アリ","クモ","コオロギ","バッタ","トンボ","ホタル","カブトムシ","てんとう虫","ヘビ",
@@ -171,6 +172,16 @@ function buildMatches(participants){
   return m;
 }
 function allResolved(matches){ return matches.every(x => x.winner !== null); }
+/* ✅ 追加：最初の“プレイ可能”試合を指すインデックス */
+function firstPlayableIndex(matches){
+  let i = 0;
+  while (i < matches.length) {
+    const m = matches[i];
+    if (m.left && m.right && !m.winner) break;
+    i++;
+  }
+  return i;
+}
 
 /* ===== 初期化（毎回1024→128候補ランダム抽出） ===== */
 async function initTournamentIfNeeded(){
@@ -188,9 +199,12 @@ async function initTournamentIfNeeded(){
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
 
+  /* ✅ 不戦勝を反映した上で最初のプレイ可能試合へ */
+  const matchIndex = firstPlayableIndex(matches);
+
   await setDoc(ref, {
     round: 1,
-    matchIndex: 0,
+    matchIndex,
     matches,
     nextCandidates,
     champion: null,
@@ -202,30 +216,48 @@ async function initTournamentIfNeeded(){
 }
 
 /* ===== ラウンド遷移 ===== */
-async function startNextRound(docData){
+/* ✅ 置き換え：トランザクションで単発実行＆playableIndex を設定 */
+async function startNextRound(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
-  const winners = (docData.nextCandidates ?? []).slice();
-  if (winners.length === 0) return;
-  if (winners.length === 1){
-    await updateDoc(ref, { champion: winners[0], updatedAt: serverTimestamp() });
-    return;
-  }
-  const matches = buildMatches(winners);
-  const nextCandidates = [];
-  for (const m of matches){
-    if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
-    else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
-  }
-  await updateDoc(ref, {
-    round: (docData.round ?? 1) + 1,
-    matchIndex: 0,
-    matches,
-    nextCandidates,
-    updatedAt: serverTimestamp()
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const d = snap.data();
+    if (d.champion) return;
+
+    const winners = (d.nextCandidates ?? []).slice();
+    if (winners.length === 0) return;
+
+    // まだ現ラウンドに未決着があれば遷移しない（二重トリガー防止）
+    const matches = d.matches ?? [];
+    if (!allResolved(matches)) return;
+
+    if (winners.length === 1){
+      // ✅ チャンピオン確定のみ
+      tx.update(ref, { champion: winners[0], updatedAt: serverTimestamp() });
+      return;
+    }
+
+    const newMatches = buildMatches(winners);
+    const nextCandidates = [];
+    for (const m of newMatches){
+      if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
+      else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
+    }
+    const newIndex = firstPlayableIndex(newMatches);
+
+    tx.update(ref, {
+      round: (d.round ?? 1) + 1,
+      matchIndex: newIndex,
+      matches: newMatches,
+      nextCandidates,
+      updatedAt: serverTimestamp()
+    });
   });
 }
 
 /* ===== 投票 ===== */
+/* ✅ 変更：setTimeout(startNextRound) を削除し、次インデックスは bye/決着済みをスキップ */
 async function vote(side){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   await runTransaction(db, async (tx) => {
@@ -249,15 +281,14 @@ async function vote(side){
       const next = (d.nextCandidates ?? []).slice();
       next.push(m.winner);
 
-      let matchIndex = (d.matchIndex ?? 0) + 1;
-      while (matchIndex < matches.length && matches[matchIndex].winner) matchIndex++;
+      let nextIndex = (d.matchIndex ?? 0) + 1;
+      while (nextIndex < matches.length) {
+        const nm = matches[nextIndex];
+        if (nm.left && nm.right && !nm.winner) break;
+        nextIndex++;
+      }
 
-      tx.update(ref, { matches, nextCandidates: next, matchIndex, updatedAt: serverTimestamp() });
-
-      setTimeout(async () => {
-        const after = (await getDoc(ref)).data();
-        if (after && allResolved(after.matches)) await startNextRound(after);
-      }, 0);
+      tx.update(ref, { matches, nextCandidates: next, matchIndex: nextIndex, updatedAt: serverTimestamp() });
     } else {
       tx.update(ref, { matches, updatedAt: serverTimestamp() });
     }
@@ -280,8 +311,11 @@ async function reinitTournament(){
     if (m.left && !m.right){ m.winner = m.left; nextCandidates.push(m.left); }
     else if (!m.left && m.right){ m.winner = m.right; nextCandidates.push(m.right); }
   }
+  /* ✅ ここでも playableIndex を設定 */
+  const matchIndex = firstPlayableIndex(matches);
+
   await setDoc(ref, {
-    round: 1, matchIndex: 0, matches, nextCandidates,
+    round: 1, matchIndex, matches, nextCandidates,
     champion: null, threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
     totalCandidates: 128,
@@ -311,7 +345,6 @@ let lastTournamentMarker = null;
 
 /* ===== 状態監視 ===== */
 let resetting = false;
-let advancingRound = false;
 
 onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
@@ -334,18 +367,24 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   // 閲覧数表示
   $("view-label").textContent = `Views: ${d.views ?? 0}`;
 
-  // 優勝が決まったら、一度 Round: 10 を表示してから再初期化
+  // ✅ チャンピオンを数秒表示してから再初期化
   if (d.champion && !resetting){
     $("round-label").textContent = "Round: 10";
+    $("label-left").textContent  = d.champion;
+    $("label-right").textContent = "—";
+    $("btn-left").disabled  = true;
+    $("btn-right").disabled = true;
+
     resetting = true;
-    reinitTournament().finally(()=>{ resetting = false; });
+    setTimeout(() => {
+      reinitTournament().finally(()=>{ resetting = false; });
+    }, 3000); // 表示時間（ms）
     return;
   }
 
-  // ラウンドが全試合終了したら次ラウンドへ
-  if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
-    advancingRound = true;
-    startNextRound(d).finally(()=>{ advancingRound = false; });
+  // ✅ ラウンドが全試合終了したら次ラウンドへ（単発：関数内でトランザクション判定）
+  if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches)){
+    startNextRound();
     return;
   }
 
@@ -353,10 +392,6 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const match = d.matches?.[idx];
 
   if (!match){
-    if (!d.champion && Array.isArray(d.matches) && (allResolved(d.matches) || idx >= d.matches.length) && !advancingRound){
-      advancingRound = true;
-      startNextRound(d).finally(()=>{ advancingRound = false; });
-    }
     return;
   }
 
