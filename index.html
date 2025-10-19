@@ -425,14 +425,14 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
 
   // 表示ラウンド（内部+2、最大10）
   const displayedRound = calcDisplayedRound(d.round);
-  $("round-label").textContent = `Round: ${displayedRound}`;
+  $("round-label").textContent = `進行: ${displayedRound}`;
 
   // 閲覧数表示
-  $("view-label").textContent = `Views: ${d.views ?? 0}`;
+  $("view-label").textContent = `閲覧数: ${d.views ?? 0}`;
 
   // ✅ チャンピオン確定時：UIはそのまま、リセットは排他ロックで1クライアントのみ担当
   if (d.champion){
-    $("round-label").textContent = "Round: 10";
+    $("round-label").textContent = "進行: 10";
     acquireResetLockAndSchedule(d);
     return;
   }
