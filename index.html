@@ -389,6 +389,17 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   $("btn-right").disabled = !playable;
 });
 
+  <script type="module">
+import { deleteDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+
+// …（既存の初期化などの下あたりに）…
+if (new URLSearchParams(location.search).get("reset") === "1") {
+  // tournaments/main を消してから通常の初期化を実行
+  await deleteDoc(doc(db, "tournaments", TOURNAMENT_DOC_ID)).catch(()=>{});
+  await initTournamentIfNeeded();
+}
+</script>
+
 /* ===== 起動 ===== */
 initTournamentIfNeeded().then(() => bumpView());
 </script>
