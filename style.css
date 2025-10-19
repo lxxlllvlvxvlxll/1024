@@ -3,19 +3,19 @@
    - 背景は常に黒
    - Round / Views / 質問文を1つの文章として中央に横並び
    - ボタン語は常にピンク（全デバイス）
+   - フォントと文字サイズを統一
    ========================================================= */
 
 :root{
   /* カラー */
-  --bg:    #000000;
-  --fg:    #ff0808;
-  --muted: #ff0808;
-  --pink:  #ff0808; /* ボタン語のピンク */
+  --bg:    #696969;
+  --fg:    #e6e6e6;
+  --muted: #e6e6e6;
+  --pink:  #ebebeb; /* ボタン語のピンク */
 
   /* タイポ・レイアウト */
   --font:  "Hiragino Kaku Gothic ProN", "Hiragino Kaku Gothic Pro", "ヒラギノ角ゴ ProN W3", "ヒラギノ角ゴ Pro", Georgia, "Noto Sans JP", sans-serif;
-  --fs:    clamp(18px, 2.2vw, 24px);
-  --fsSub: clamp(14px, 1.8vw, 16px);
+  --fs:    clamp(18px, 2.2vw, 24px); /* 統一フォントサイズ */
   --gap:   .35em;
   --radius: 8px;
 
@@ -24,21 +24,23 @@
   --ease: cubic-bezier(.2,.7,.3,1);
 }
 
-/* ベース */
+/* ベース（中央寄せ） */
 html, body{
   margin:0; padding:0;
   height: 100%;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
+  font-size: var(--fs);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
   display: flex;
   justify-content: center;
   align-items: center;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* “詩”としての1行風レイアウト：中央に横並び＋適度に折り返し */
+/* 詩のような一行風レイアウト */
 .qwrap{
   max-width: 1000px;
   padding: 0 16px;
@@ -50,28 +52,20 @@ html, body{
   flex-wrap: wrap;
   gap: var(--gap);
   line-height: 1.9;
-  font-size: var(--fs);
 }
 
-/* Round / Views を“文章の一部”として扱う */
+/* すべて同じ文字サイズ・色統一 */
 .round-label,
-.view-label{
-  display: inline;
-  margin: 0;
-  font-size: var(--fsSub);
-  color: var(--muted);
-  letter-spacing: .01em;
-}
-
-/* 質問文（○○ か ○○） */
+.view-label,
 .question{
   display: inline;
   margin: 0;
   font-size: var(--fs);
   letter-spacing: .01em;
+  color: var(--fg);
 }
 
-/* ボタン語（○○）は常にピンク */
+/* ボタン語（常にピンク） */
 .name-btn{
   appearance: none;
   border: none;
@@ -92,29 +86,25 @@ html, body{
   color: inherit;
 }
 
-/* “言葉に触れた”感じの最小限のフィードバック */
+/* ホバー・クリック・フォーカス効果 */
 .name-btn:hover{
   background: color-mix(in oklab, var(--pink) 16%, transparent);
 }
 .name-btn:active{
   transform: translateY(1px);
 }
-
-/* フォーカス時はうっすらピンクのグロー */
 .name-btn:focus{
   outline: none;
   box-shadow:
     0 0 0 2px color-mix(in oklab, var(--pink) 35%, transparent);
 }
-
-/* 非アクティブ */
 .name-btn:disabled{
   opacity: .55;
   cursor: not-allowed;
 }
 
-/* モバイル */
+/* モバイル対応 */
 @media (max-width: 520px){
   .qwrap{ gap: .25em; }
-  .question{ font-size: clamp(16px, 4.5vw, 20px); }
+  .qwrap{ font-size: clamp(16px, 4.5vw, 20px); }
 }
