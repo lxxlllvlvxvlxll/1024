@@ -373,18 +373,10 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   // 閲覧数表示
   $("view-label").textContent = `Views: ${d.views ?? 0}`;
 
-  // ✅ チャンピオンを数秒表示してから再初期化
+  // ✅ チャンピオンが決まったら即座に再初期化（表示せず）
   if (d.champion && !resetting){
-    $("round-label").textContent = "Round: 10";
-    $("label-left").textContent  = d.champion;
-    $("label-right").textContent = "—";
-    $("btn-left").disabled  = true;
-    $("btn-right").disabled = true;
-
     resetting = true;
-    setTimeout(() => {
-      reinitTournament().finally(()=>{ resetting = false; });
-    }, 3000); // 表示時間（ms）
+    reinitTournament().finally(()=>{ resetting = false; });
     return;
   }
 
