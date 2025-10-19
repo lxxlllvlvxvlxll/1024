@@ -373,10 +373,14 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   // 閲覧数表示
   $("view-label").textContent = `Views: ${d.views ?? 0}`;
 
-  // ✅ チャンピオンが決まったら即座に再初期化（表示せず）
+  // ✅ チャンピオン確定時の「片側を消す」表示機能を削除
   if (d.champion && !resetting){
+    $("round-label").textContent = "Round: 10";
+    // ラベルやボタン状態は変更しない（既存の UI を維持）
     resetting = true;
-    reinitTournament().finally(()=>{ resetting = false; });
+    setTimeout(() => {
+      reinitTournament().finally(()=>{ resetting = false; });
+    }, 3000); // 表示時間（ms）
     return;
   }
 
