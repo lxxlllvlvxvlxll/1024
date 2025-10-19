@@ -357,8 +357,8 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
     lastTournamentMarker = marker;
   }
 
-  $("round-label").textContent = `Round: ${calcDisplayedRound(d.round)}`;
-  $("view-label").textContent = `Views: ${d.views ?? 0}`;
+  $("round-label").textContent = `進行中のラウンド: ${calcDisplayedRound(d.round)}`;
+  $("view-label").textContent = `閲覧数: ${d.views ?? 0}`;
 
   if (d.champion && !resetting){
     $("round-label").textContent = "Round: 10";
