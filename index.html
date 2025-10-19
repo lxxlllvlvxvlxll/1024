@@ -324,7 +324,8 @@ async function reinitTournament(){
 }
 
 /* ===== 閲覧数加算（優勝が決まるまで1ビュー＝+1） ===== */
-async function bumpView(){
+/* ✅ 修正：onlyIfZero=true のときは views===0 の場合のみ原子的に +1（新トーナメント開始時の過剰加算を防止） */
+async function bumpView(onlyIfZero = false){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   try {
     await runTransaction(db, async (tx) => {
@@ -333,6 +334,11 @@ async function bumpView(){
       const d = snap.data();
       if (d.champion) return; // 優勝後は加算しない
       const current = d.views ?? 0;
+
+      if (onlyIfZero && current > 0) {
+        return; // 新トーナメント自動加算は 0→1 のときだけ
+      }
+
       tx.update(ref, { views: current + 1, updatedAt: serverTimestamp() });
     });
   } catch (e) {
@@ -353,11 +359,11 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   // 新トーナメント識別：先頭数試合の組合せをマーカー化
   const marker = JSON.stringify((d.matches ?? []).slice(0, 6).map(m => [m.left, m.right]));
   if (marker && marker !== lastTournamentMarker) {
-    // Round10終了→再抽選直後は round=1 & views=0 のはず → その場の閲覧者を+1
+    // Round10終了→再抽選直後は round=1 & views=0 のはず → その場の閲覧者を+1（0→1 の時だけ原子的に加算）
     if ((d.round ?? 1) === 1 && (d.views ?? 0) === 0) {
-      bumpView();
+      bumpView(true); // ✅ ここは「views が 0 の時だけ」加算
     }
-    lastTournamentMarker = marker; // 二重加算防止
+    lastTournamentMarker = marker; // 二重加算防止（クライアント内）
   }
 
   // 表示ラウンド（内部+2、最大10）
