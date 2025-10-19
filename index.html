@@ -16,10 +16,10 @@
     padding: 0 12px;
     text-align: center;
   }
-  .round-label {
+  .round-label, .view-label {
     font-size: clamp(14px, 2vw, 18px);
     color: #555;
-    margin-bottom: 8px;
+    margin: 0 0 6px;
   }
   .question {
     font-size: clamp(18px, 2.4vw, 24px);
@@ -44,6 +44,7 @@
 <body>
   <div class="qwrap">
     <p class="round-label" id="round-label">Round: —</p>
+    <p class="view-label"  id="view-label">Views: 0</p>
     <p class="question" aria-live="polite">
       <button class="name-btn" id="btn-left" title="左に投票">
         <strong id="label-left">—</strong>
@@ -56,7 +57,7 @@
   </div>
 
 <script type="module">
-/* ===== Firebase v12.4.0 ===== */
+/* ===== Firebase v12.4.0（変更不可） ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc,
@@ -74,7 +75,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ===== 候補一覧（1024件） ===== */
+/* ===== 候補一覧（1024件想定：実装では全件を配置） ===== */
 const OPTIONS = [
 "りんご","オレンジ","ぶどう","もも","スイカ","バナナ","パイナップル","いちご","マンゴー","メロン",
 "キウイ","さくらんぼ","レモン","ライム","ブルーベリー","ラズベリー","ブラックベリー","プラム","あんず","ココナッツ",
@@ -129,9 +130,11 @@ async function initTournamentIfNeeded(){
   const snap = await getDoc(ref);
   if (snap.exists()) return;
 
+  // 1024候補からランダムに128個抽出
   const allShuffled = shuffle(OPTIONS);
   const selected128 = allShuffled.slice(0, 128);
 
+  // 内部ラウンド1で開始（表示は+2補正でRound 3）
   const matches = buildMatches(selected128);
   const nextCandidates = [];
   for (const m of matches){
@@ -147,7 +150,8 @@ async function initTournamentIfNeeded(){
     champion: null,
     threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
-    totalCandidates: 128
+    totalCandidates: 128,
+    views: 0               // ★ 追加：閲覧数（新規開始時は0）
   });
 }
 
@@ -183,6 +187,7 @@ async function vote(side){
     if (!snap.exists()) throw "not-found";
     const d = snap.data();
     if (d.champion) return;
+
     const idx = d.matchIndex ?? 0;
     const matches = d.matches ?? [];
     const m = matches[idx];
@@ -218,7 +223,7 @@ const $ = (id)=>document.getElementById(id);
 $("btn-left").addEventListener("click", () => vote('left'));
 $("btn-right").addEventListener("click", () => vote('right'));
 
-/* ===== 自動再初期化 ===== */
+/* ===== 自動再初期化（新しい128を毎回抽選） ===== */
 async function reinitTournament(){
   const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
   const allShuffled = shuffle(OPTIONS);
@@ -233,8 +238,27 @@ async function reinitTournament(){
     round: 1, matchIndex: 0, matches, nextCandidates,
     champion: null, threshold: VOTE_THRESHOLD,
     updatedAt: serverTimestamp(),
-    totalCandidates: 128
+    totalCandidates: 128,
+    views: 0               // ★ 追加：新トーナメント開始時に0へリセット
   });
+}
+
+/* ===== 閲覧数加算（優勝が決まるまで1ビュー＝+1） ===== */
+async function bumpView(){
+  const ref = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const d = snap.data();
+      if (d.champion) return; // 優勝後は加算しない
+      const current = d.views ?? 0;
+      tx.update(ref, { views: current + 1, updatedAt: serverTimestamp() });
+    });
+  } catch (e) {
+    // 失敗時は無視（UIはonSnapshotで更新される）
+    console.error("bumpView failed:", e);
+  }
 }
 
 /* ===== 状態監視 ===== */
@@ -245,15 +269,22 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const d = snap.data();
   if (!d) return;
 
-  // Round表示を更新
-  $("round-label").textContent = d.round ? `Round: ${d.round}` : "Round: —";
+  // 表示ラウンド = 内部ラウンド + 2（最大10）
+  const displayedRound = Math.min(((d.round ?? 1) + 2), 10);
+  $("round-label").textContent = `Round: ${displayedRound}`;
 
+  // 閲覧数表示を更新
+  $("view-label").textContent = `Views: ${d.views ?? 0}`;
+
+  // 優勝が決まったら、まず Round 10 を表示してから再初期化
   if (d.champion && !resetting){
+    $("round-label").textContent = "Round: 10";
     resetting = true;
     reinitTournament().finally(()=>{ resetting = false; });
     return;
   }
 
+  // ラウンドが全試合終了したらすぐ次ラウンドへ
   if (!d.champion && Array.isArray(d.matches) && d.matches.length > 0 && allResolved(d.matches) && !advancingRound){
     advancingRound = true;
     startNextRound(d).finally(()=>{ advancingRound = false; });
@@ -263,6 +294,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
   const idx = d.matchIndex ?? 0;
   const match = d.matches?.[idx];
 
+  // ラウンドの狭間でのフォールバック
   if (!match){
     if (!d.champion && Array.isArray(d.matches) && (allResolved(d.matches) || idx >= d.matches.length) && !advancingRound){
       advancingRound = true;
@@ -271,6 +303,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
     return;
   }
 
+  // 表示するのは候補名のみ
   $("label-left").textContent  = match.left  ?? "—";
   $("label-right").textContent = match.right ?? "—";
 
@@ -280,7 +313,7 @@ onSnapshot(doc(db, "tournaments", TOURNAMENT_DOC_ID), (snap) => {
 });
 
 /* ===== 起動 ===== */
-initTournamentIfNeeded();
+initTournamentIfNeeded().then(() => bumpView());
 </script>
 </body>
 </html>
